@@ -120,3 +120,8 @@ foxlens already builds the E2E harness page into `dist-e2e/` with
 | ID | Failure | Wanted result |
 |---|---|---|
 | AR10 | A change makes `build-ext.mjs --e2e` write to `dist-ext/` | `check:amo` finds `e2e-harness.html` (AR4) and stops |
+
+| ID | Failure | Wanted result |
+|---|---|---|
+| AR-U1 | A `local_hosts` reason for a host permission also clears a test content script on the same pattern | Each reason names its use (`host_permission`, `content_script`, `web_accessible_resource`, `externally_connectable`); a use without its own reason stops the check |
+| AR-U2 | `local_hosts` keeps a reason for a use that the release build does not have | The check stops and names the pattern and the use |

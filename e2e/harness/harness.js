@@ -1,0 +1,170 @@
+// The E2E harness page. e2e/run.mjs calls window.lens.* here, in the
+// extension, so foxlens runs with the real browser.* APIs.
+import { createMind, openaiCompatible } from "foxmind";
+import { act, snapshot } from "foxpaw";
+import * as foxlens from "../../src/index.ts";
+
+const seen = new Map();
+/** The id of the tab that shows this URL. Remembered, because tab URLs hide once the host grant goes. */
+async function tabFor(url) {
+  const tab = (await browser.tabs.query({})).find((t) => t.url === url);
+  if (tab) seen.set(url, tab.id);
+  if (!seen.has(url)) throw new Error(`No tab shows ${url}`);
+  return seen.get(url);
+}
+
+/** RGBA of one image pixel, read with OffscreenCanvas. */
+async function pixels(dataUrl, points) {
+  const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const context = canvas.getContext("2d");
+  context.drawImage(bitmap, 0, 0);
+  return points.map(([x, y]) => [...context.getImageData(Math.floor(x), Math.floor(y), 1, 1).data]);
+}
+
+const colour = ([r, g, b]) => (b > 200 && r < 80 && g < 80 ? "blue" : r > 240 && g > 240 && b > 240 ? "white" : `rgb(${r},${g},${b})`);
+
+/**
+ * A fake vision model for deterministic tests. It finds the pixels of one
+ * colour in the real screenshot and answers with their box on the 0-1000
+ * scale, as Qwen-VL does. It never reads the DOM, so a wrong DPR, zoom or
+ * scroll mapping in foxlens makes the point miss.
+ */
+const per = (v, size) => Math.round((v / size) * 1000);
+
+function colourEyes(hex) {
+  const want = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return {
+    name: "colour-oracle", canPoint: true,
+    async ask(image, prompt) {
+      const started = Date.now();
+      const bitmap = await createImageBitmap(await (await fetch(image)).blob());
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext("2d");
+      context.drawImage(bitmap, 0, 0);
+      const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
+      let [x1, y1, x2, y2] = [Infinity, Infinity, -1, -1];
+      for (let i = 0; i < data.length; i += 4) {
+        if (want.every((v, c) => Math.abs(data[i + c] - v) <= 12)) {
+          const x = (i / 4) % bitmap.width, y = Math.floor(i / 4 / bitmap.width);
+          [x1, y1, x2, y2] = [Math.min(x1, x), Math.min(y1, y), Math.max(x2, x), Math.max(y2, y)];
+        }
+      }
+      // In grid mode, answer with the cell that holds the centre of the colour.
+      const grid = /grid of (\d+) x (\d+)/.exec(prompt);
+      const cell = grid && x2 >= 0
+        ? Math.floor(((y1 + y2) / 2 / bitmap.height) * grid[2]) * grid[1] + Math.floor(((x1 + x2) / 2 / bitmap.width) * grid[1]) + 1 : 0;
+      const text = x2 < 0 ? '{"found": false}' : grid ? JSON.stringify({ cell })
+        : JSON.stringify({ bbox_2d: [per(x1, bitmap.width), per(y1, bitmap.height), per(x2, bitmap.width), per(y2, bitmap.height)] });
+      return { text, provider: "colour-oracle", tier: "browser", model: `colour #${hex}`, ms: Date.now() - started };
+    },
+  };
+}
+
+/** A fake vision model that always gives the same reply. */
+const fixedEyes = (text) => ({ name: "fixed", canPoint: true, ask: async () => ({ text, provider: "fixed", tier: "browser", model: "fixed", ms: 0 }) });
+const eyesFor = (fake) => (fake.colour ? colourEyes(fake.colour) : fixedEyes(fake.reply));
+
+let lastShot;
+let lastFound;
+const jobs = [];
+
+/** Errors cross the WebDriver boundary as plain objects. */
+const plain = (error) => ({ error: { code: error?.code, message: error?.message ?? String(error) } });
+
+window.lens = {
+  tabFor,
+  async setZoom(url, zoom) {
+    await browser.tabs.setZoom(await tabFor(url), zoom);
+  },
+  /** Capture, then report the colour at each document point through the capture's own mapping. */
+  async captureAt(url, options, docPoints) {
+    try {
+      const shot = await foxlens.capture(await tabFor(url), options);
+      const image = docPoints.map(([x, y]) => [(x - shot.rect.x) * shot.pxPerCss, (y - shot.rect.y) * shot.pxPerCss]);
+      const colours = (await pixels(shot.dataUrl, image)).map(colour);
+      const { dataUrl, ...facts } = shot;
+      return { ...facts, bytes: dataUrl.length, colours };
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Capture and keep the capture for a later locate({ useLast: true }). */
+  async capture(url) {
+    lastShot = await foxlens.capture(await tabFor(url));
+    return { scroll: lastShot.scroll, documentId: lastShot.documentId };
+  },
+  /** Locate with a fake model. */
+  async locate(url, description, fake, options = {}) {
+    try {
+      const { useLast, ...rest } = options;
+      lastFound = await foxlens.locate(await tabFor(url), description, { eyes: eyesFor(fake), ...(useLast ? { capture: lastShot } : {}), ...rest });
+      return lastFound;
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Describe the tab with Firefox's own image-to-text model. */
+  async describeTrial(url) {
+    try {
+      return await foxlens.describe(await foxlens.capture(await tabFor(url)), { eyes: foxlens.trialMLEyes() });
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Describe and locate with a real vision model on an OpenAI-compatible server, through real foxmind. */
+  async real(url, op, baseURL, model, description) {
+    try {
+      const mind = createMind({ only: ["browser", "local"], providers: [openaiCompatible({ baseURL, model, timeoutMs: 300_000 })] });
+      const tabId = await tabFor(url);
+      if (op === "describe") return await foxlens.describe(await foxlens.capture(tabId), { mind });
+      return await foxlens.locate(tabId, description, { mind, ...(op === "grid" ? { grid: 8 } : {}) });
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Start a long call and return its id; done(id) gives { value } once it ends. */
+  start(fn, url, args) {
+    const id = jobs.length;
+    jobs.push(undefined);
+    window.lens[fn](url, ...args).then((value) => (jobs[id] = { value }));
+    return id;
+  },
+  done: (id) => jobs[id],
+  /** Locate with a foxpaw snapshot taken first, then click through foxpaw's act. */
+  async pawClick(url, description, fake) {
+    try {
+      const tabId = await tabFor(url);
+      const page = await snapshot(tabId);
+      const found = await foxlens.locate(tabId, description, { eyes: eyesFor(fake), snapshot: page });
+      if (!found.found || !found.control) return { found: found.found, control: false };
+      return { found: true, control: true, acted: await act(tabId, found.control, { op: "click" }, page) };
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Locate (with a foxpaw snapshot, to show there is no control), then click the point. */
+  async locateAndClick(url, description, fake) {
+    try {
+      const tabId = await tabFor(url);
+      lastFound = await foxlens.locate(tabId, description, { eyes: eyesFor(fake), snapshot: await snapshot(tabId) });
+      return { control: !!lastFound.control, clicked: await foxlens.clickAt(tabId, lastFound) };
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  async locateOnly(url, description, fake) {
+    lastFound = await foxlens.locate(await tabFor(url), description, { eyes: eyesFor(fake) });
+    return lastFound.found;
+  },
+  /** Click the last found element again. */
+  async clickLast(url) {
+    return foxlens.clickAt(await tabFor(url), lastFound);
+  },
+  /** Locate, then outline the element on the page. */
+  async outlineFound(url, description, fake) {
+    const tabId = await tabFor(url);
+    const found = await foxlens.locate(tabId, description, { eyes: eyesFor(fake) });
+    return found.found ? foxlens.outline(tabId, found) : found;
+  },
+};

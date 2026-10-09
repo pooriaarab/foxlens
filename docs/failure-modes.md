@@ -59,6 +59,8 @@ Words used here:
 | L11 | The model invents an element: the point lands on the page background (`html` or `body`) or on a large block with no text near it. | Return `found: false` with reason `nothing_there` for `html` and `body`. For other elements, return `check.match` (0 to 1), the word overlap between the description and the element's name and text, so the caller can refuse a weak match. | E2E: fake model points at empty space |
 | L12 | The page navigated or reloaded between capture and locate. | The hit test targets the captured `documentId`. Firefox refuses it, and foxlens returns `found: false` with reason `stale`. | E2E: reload after capture |
 | L13 | The DOM changed after the capture, but the layout did not move (a counter, a clock). | Count DOM changes since the capture and report them in `changed.mutations`. Do not refuse: many pages change all the time. | E2E: change text after capture |
+| L15 | The element is `position: fixed` (or inside a fixed ancestor), and the page scrolls between capture and locate. Its document point now holds another element (for example "Delete account" under a fixed "Accept"). | When the scroll changed and the element at the captured viewport point is fixed, map in viewport space and return the fixed element. Report `anchor: "viewport"`. | E2E: fixed fixture, scroll 300 px after capture |
+| L16 | The page scrolls between capture and locate, and the element at the document point is now fixed or sticky (a fixed bar slid over it), or the element at the captured viewport point is sticky. foxlens cannot tell which element the model saw. | Return `found: false` with reason `stale`. | E2E: fixed bar over a scrolled button |
 | L14 | The canvas redraws after the capture (a game, a chart), so the drawn button moved. | Not detected. This is a known limit: the DOM does not change. The README says so. | none (documented limit) |
 
 ## Hand-off and actions (A)
@@ -69,6 +71,7 @@ Words used here:
 | A2 | The element is not one of foxpaw's controls (a canvas, a closed shadow root). | Return no `control`. `clickAt` clicks the point instead. | E2E: canvas click through `clickAt` |
 | A3 | Between `locate` and `clickAt` another element moves under the point. | `clickAt` hit-tests again and compares the element with the one `locate` found. When it differs, it returns `{ ok: false, reason: "stale" }` and does not click. | E2E: swap the element, then click |
 | A4 | `outline` draws in the wrong place at DPR 2, at page zoom, or after a scroll. | Draw the outline in document CSS pixels from the hit test's rect. The E2E checks the outline's rect against the element's rect. | E2E |
+| A6 | After `locate` found a fixed element, the page scrolls again before `clickAt`. | `clickAt` uses the viewport point for an element found with `anchor: "viewport"`, and the document point otherwise. The identity check still runs. | E2E: scroll, then click the fixed button |
 | A5 | The verification data is missing, so the caller cannot sanity-check the element. | Every found result has the element's `tag`, `role`, `name` and `text`. | E2E |
 
 ## Providers and privacy (P)

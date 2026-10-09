@@ -2,6 +2,7 @@
 // e2e/harness/), run foxlens in a real Firefox at DPR 1 and DPR 2 against the
 // fixture pages in e2e/site/, and write artifacts/e2e-<date>.json.
 // Usage: pnpm e2e [--headed]. Env: FIREFOX (the Firefox binary).
+import { mkdirSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { launch, poll, serve, writeArtifact } from "create-foxkit/e2e";
 
@@ -148,6 +149,21 @@ try {
       await canvas.reload({ waitUntil: "load" });
       check(`${at}: a reload after the capture is stale (L12)`, "stale", (await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true })).reason);
 
+      // Fixed and sticky layers after a scroll (L15, L16, A6).
+      const fixed = await open("fixed.html");
+      await lens("capture", "fixed.html");
+      await fixed.evaluate(() => window.scrollTo(0, 300));
+      const accept = await lens("locate", "fixed.html", "the yellow Accept button", { colour: "ca8a04" }, { useLast: true });
+      check(`${at}: a fixed button stays found after a scroll (L15)`, ["Accept", "viewport"], [accept.element?.name, accept.anchor]);
+      await fixed.evaluate(() => window.scrollTo(0, 450));
+      const acceptClick = await lens("clickLast", "fixed.html");
+      check(`${at}: clickAt hits the fixed button after another scroll (A6)`, [true, "ACCEPTED"], [acceptClick.ok, await fixed.title()]);
+      await fixed.evaluate(() => window.scrollTo(0, 0));
+      await lens("capture", "fixed.html");
+      await fixed.evaluate(() => window.scrollTo(0, 80));
+      const slid = await lens("locate", "fixed.html", "the pink Save button", { colour: "be185d" }, { useLast: true });
+      check(`${at}: a button now under a fixed bar is stale (L16)`, ["stale", "ACCEPTED"], [slid.reason, await fixed.title()]);
+
       // Grid mode (M8): numbered cells over the page, then finer cells over the chosen area.
       const gridded = await lens("locate", "canvas.html", "the blue Subscribe button", blue, { grid: 8 });
       check(`${at}: grid mode maps inside the drawn button and removes the grid`, [true, [true, true], false],
@@ -219,7 +235,7 @@ try {
           return !!box && ["x", "y", "width", "height"].every((k) => Math.abs(box[k] + (k === "x" ? scrollX : k === "y" ? scrollY : 0) - want[k]) < 2);
         });
         check(`${at}: the demo outlines the model's box on the canvas (D2)`, [true, true], [outlined, /canvas/.test(await panelText("output"))]);
-        (await import("node:fs")).mkdirSync("artifacts", { recursive: true });
+        mkdirSync("artifacts", { recursive: true });
         await demoTab.screenshot({ path: "artifacts/demo-outline.png" });
         record.notes.demoLast = await panel.evaluate(() => browser.storage.local.get("last").then((v) => v.last));
         check(`${at}: the demo keeps the last result for the next time it opens (D3)`, "find", record.notes.demoLast?.kind);

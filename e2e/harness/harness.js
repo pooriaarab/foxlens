@@ -98,7 +98,8 @@ window.lens = {
   async locate(url, description, fake, options = {}) {
     try {
       const { useLast, ...rest } = options;
-      return await foxlens.locate(await tabFor(url), description, { eyes: eyesFor(fake), ...(useLast ? { capture: lastShot } : {}), ...rest });
+      lastFound = await foxlens.locate(await tabFor(url), description, { eyes: eyesFor(fake), ...(useLast ? { capture: lastShot } : {}), ...rest });
+      return lastFound;
     } catch (error) {
       return plain(error);
     }

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixed fixture</title>
+    <style>
+      body { margin: 0; height: 3000px; font: 16px sans-serif; background: #fff; }
+      button { width: 160px; height: 60px; border: 0; color: #fff; font: bold 18px sans-serif; }
+      #accept { position: fixed; left: 100px; top: 300px; z-index: 2; background: #ca8a04; }
+      #delete { position: absolute; left: 100px; top: 300px; background: #7f1d1d; }
+      #bar { position: fixed; left: 0; top: 0; width: 100%; height: 60px; z-index: 2; background: #334155; }
+      #save { position: absolute; left: 500px; top: 100px; background: #be185d; }
+    </style>
+  </head>
+  <body>
+    <div id="bar"></div>
+    <!-- A fixed button over a scrolling one at the same place: after a 300 px
+         scroll, the document point of "Accept" is the "Delete account" button. -->
+    <button id="delete" onclick="document.title = 'DELETED'">Delete account</button>
+    <button id="accept" onclick="document.title = 'ACCEPTED'">Accept</button>
+    <!-- A scrolling button that slides under the fixed bar. -->
+    <button id="save" onclick="document.title = 'SAVED'">Save</button>
+  </body>
+</html>

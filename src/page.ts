@@ -69,51 +69,78 @@ export interface ElementInfo {
 
 export type Hit =
   | { kind: "stale" | "offscreen" | "nothing" | "covered" | "clicked" }
-  | { kind: "hit"; point: { x: number; y: number }; element: ElementInfo; scrolled: boolean; mutations: number; lensNode: number; foxpawNode?: number };
+  | { kind: "hit"; point: { x: number; y: number }; anchor: "viewport" | "document"; element: ElementInfo; scrolled: boolean; mutations: number; lensNode: number; foxpawNode?: number };
 
 /**
  * Finds the element at a document point, through open and closed shadow roots and
  * same-origin frames. With `click` (a lensNode from an earlier hit), it clicks the
  * point only when the same element is still there and nothing covers it.
  */
-export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: number; sx: number; sy: number; mutations: number; click?: number }): Hit {
+export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: number; sx: number; sy: number; mutations: number; click?: number; anchor?: "viewport" | "document" }): Hit {
   if (innerWidth !== at.w || innerHeight !== at.h || devicePixelRatio !== at.dpr) return { kind: "stale" };
-  let [vx, vy] = [at.x - scrollX, at.y - scrollY];
-  if (vx < 0 || vy < 0 || vx >= innerWidth || vy >= innerHeight) return { kind: "offscreen" };
   type Root = Document | ShadowRoot;
   const shadowOf = (e: Element) => (e as Element & { openOrClosedShadowRoot?: ShadowRoot | null }).openOrClosedShadowRoot ?? e.shadowRoot;
-  let root: Root = document;
-  let top = document.elementFromPoint(vx, vy);
-  let [ox, oy] = [0, 0];
-  let frame: ElementInfo["frame"] = "top";
-  let shadow: ElementInfo["shadow"];
-  for (let depth = 0; top && depth < 20; depth++) {
-    if (top.tagName === "IFRAME" || top.tagName === "FRAME") {
-      const inner = (top as HTMLIFrameElement).contentDocument;
-      if (!inner) {
-        frame = "cross-origin";
-        break;
+  const up = (e: Element): Element | null => e.parentElement ?? ((e.getRootNode() as ShadowRoot).host || null);
+  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight;
+  /** The element at a viewport point, through shadow roots and same-origin frames. */
+  const pick = (x: number, y: number) => {
+    let [vx, vy, ox, oy] = [x, y, 0, 0];
+    let root: Root = document;
+    let top = document.elementFromPoint(vx, vy);
+    let frame: ElementInfo["frame"] = "top";
+    let shadow: ElementInfo["shadow"];
+    for (let depth = 0; top && depth < 20; depth++) {
+      if (top.tagName === "IFRAME" || top.tagName === "FRAME") {
+        const inner = (top as HTMLIFrameElement).contentDocument;
+        if (!inner) {
+          frame = "cross-origin";
+          break;
+        }
+        const r = top.getBoundingClientRect();
+        const style = getComputedStyle(top);
+        const dx = r.left + top.clientLeft + parseFloat(style.paddingLeft);
+        const dy = r.top + top.clientTop + parseFloat(style.paddingTop);
+        [vx, vy, ox, oy] = [vx - dx, vy - dy, ox + dx, oy + dy];
+        root = inner;
+        top = inner.elementFromPoint(vx, vy);
+        frame = "same-origin";
+        continue;
       }
-      const r = top.getBoundingClientRect();
-      const style = getComputedStyle(top);
-      const dx = r.left + top.clientLeft + parseFloat(style.paddingLeft);
-      const dy = r.top + top.clientTop + parseFloat(style.paddingTop);
-      [vx, vy, ox, oy] = [vx - dx, vy - dy, ox + dx, oy + dy];
-      root = inner;
-      top = inner.elementFromPoint(vx, vy);
-      frame = "same-origin";
-      continue;
+      const sr = shadowOf(top);
+      const inner = sr?.elementFromPoint(vx, vy);
+      if (!sr || !inner || inner === top) break;
+      [root, top, shadow] = [sr, inner, sr.mode];
     }
-    const sr = shadowOf(top);
-    const inner = sr?.elementFromPoint(vx, vy);
-    if (!sr || !inner || inner === top) break;
-    [root, top, shadow] = [sr, inner, sr.mode];
+    return { top, root, vx, vy, ox, oy, frame, shadow };
+  };
+  /** "fixed" or "sticky" when the element or an ancestor has that position. */
+  const pinned = (e: Element | null): string | null => {
+    for (let n = e; n; n = up(n)) {
+      const position = getComputedStyle(n).position;
+      if (position === "fixed" || position === "sticky") return position;
+    }
+    return null;
+  };
+  // The model saw the page at the capture's scroll. A fixed layer stays at the same
+  // viewport point when the page scrolls; everything else moves with the document.
+  const seen = { x: at.x - at.sx, y: at.y - at.sy };
+  const now = { x: at.x - scrollX, y: at.y - scrollY };
+  const scrolled = scrollX !== at.sx || scrollY !== at.sy;
+  let use = now;
+  if (at.anchor === "viewport") use = seen;
+  else if (!at.anchor && scrolled) {
+    const before = inside(seen.x, seen.y) ? pinned(pick(seen.x, seen.y).top) : null;
+    if (before === "sticky") return { kind: "stale" };
+    if (before === "fixed") use = seen;
+    else if (inside(now.x, now.y) && pinned(pick(now.x, now.y).top)) return { kind: "stale" };
   }
+  if (!inside(use.x, use.y)) return { kind: "offscreen" };
+  const { top, root, vx, vy, ox, oy, frame, shadow } = pick(use.x, use.y);
+  const anchor = pinned(top) === "fixed" ? "viewport" : "document";
   if (!top) return { kind: "nothing" };
 
   const INTERACTIVE = 'a[href],button,input,select,textarea,summary,label,canvas,[role="button"],[role="link"],[role="checkbox"],' +
     '[role="radio"],[role="switch"],[role="tab"],[role="menuitem"],[role="option"],[onclick],[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
-  const up = (e: Element): Element | null => e.parentElement ?? ((e.getRootNode() as ShadowRoot).host || null);
   const control = (e: Element | null): Element | null => {
     for (let n = e; n; n = up(n)) if (n.matches(INTERACTIVE)) return n;
     return null;
@@ -181,7 +208,8 @@ export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: n
   const foxpawNode = frame === "top" ? paw?.ids?.get(target) : undefined;
   return {
     kind: "hit",
-    point: { x: at.x - scrollX, y: at.y - scrollY },
+    point: use,
+    anchor,
     element: {
       tag: target.tagName.toLowerCase(), role: role(target), name: name(target), text: clean((target as HTMLElement).innerText),
       rect: { x: r.left + ox + scrollX, y: r.top + oy + scrollY, width: r.width, height: r.height },
@@ -189,7 +217,7 @@ export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: n
       ...(shadow ? { shadow } : {}),
       ...(cover ? { coveredBy: { tag: cover.tagName.toLowerCase(), role: role(cover), name: name(cover), selector: selector(cover) } } : {}),
     },
-    scrolled: scrollX !== at.sx || scrollY !== at.sy,
+    scrolled,
     mutations: state.mutations - at.mutations,
     lensNode,
     ...(foxpawNode === undefined ? {} : { foxpawNode }),

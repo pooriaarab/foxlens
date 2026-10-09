@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Inner frame</title>
+    <style>
+      body { margin: 0; background: #fff; }
+      button { margin: 50px 60px; width: 160px; height: 60px; border: 0; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <button id="inner"></button>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const button = document.getElementById("inner");
+      button.style.background = `#${params.get("colour")}`;
+      button.textContent = params.get("label");
+    </script>
+  </body>
+</html>

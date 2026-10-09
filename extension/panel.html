@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>foxlens demo</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <h1>foxlens</h1>
+    <p class="hint">See this tab as an image, then ask a vision model about it.</p>
+
+    <fieldset>
+      <legend>Vision model</legend>
+      <label>Server <input id="server" type="url" /></label>
+      <label>Model <input id="model" type="text" /></label>
+      <label class="check"><input id="remote" type="checkbox" /> Send screenshots to this server (it is not on this device)</label>
+    </fieldset>
+
+    <section>
+      <label>Describe with
+        <select id="describer">
+          <option value="server">the model server</option>
+          <option value="trialml">Firefox's on-device model (trial ML)</option>
+        </select>
+      </label>
+      <button id="describe" type="button">Describe this tab</button>
+    </section>
+
+    <section>
+      <label>Find <input id="query" type="text" placeholder="the blue Subscribe button" /></label>
+      <label class="check"><input id="grid" type="checkbox" /> Use a numbered grid (for small models)</label>
+      <button id="find" type="button">Find</button>
+    </section>
+
+    <p id="status" role="status"></p>
+    <pre id="output"></pre>
+    <script src="panel.js"></script>
+  </body>
+</html>

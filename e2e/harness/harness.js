@@ -1,5 +1,6 @@
 // The E2E harness page. e2e/run.mjs calls window.lens.* here, in the
 // extension, so foxlens runs with the real browser.* APIs.
+import { createMind, openaiCompatible } from "foxmind";
 import * as foxlens from "../../src/index.ts";
 
 const seen = new Map();
@@ -60,6 +61,7 @@ const fixedEyes = (text) => ({ name: "fixed", canPoint: true, ask: async () => (
 const eyesFor = (fake) => (fake.colour ? colourEyes(fake.colour) : fixedEyes(fake.reply));
 
 let lastShot;
+const jobs = [];
 
 /** Errors cross the WebDriver boundary as plain objects. */
 const plain = (error) => ({ error: { code: error?.code, message: error?.message ?? String(error) } });
@@ -95,4 +97,30 @@ window.lens = {
       return plain(error);
     }
   },
+  /** Describe the tab with Firefox's own image-to-text model. */
+  async describeTrial(url) {
+    try {
+      return await foxlens.describe(await foxlens.capture(await tabFor(url)), { eyes: foxlens.trialMLEyes() });
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Describe and locate with a real vision model on an OpenAI-compatible server, through real foxmind. */
+  async real(url, op, baseURL, model, description) {
+    try {
+      const mind = createMind({ providers: [openaiCompatible({ baseURL, model, timeoutMs: 300_000 })] });
+      const tabId = await tabFor(url);
+      return op === "describe" ? await foxlens.describe(await foxlens.capture(tabId), { mind }) : await foxlens.locate(tabId, description, { mind });
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Start a long call and return its id; done(id) gives { value } once it ends. */
+  start(fn, url, args) {
+    const id = jobs.length;
+    jobs.push(undefined);
+    window.lens[fn](url, ...args).then((value) => (jobs[id] = { value }));
+    return id;
+  },
+  done: (id) => jobs[id],
 };

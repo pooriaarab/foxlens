@@ -1,2 +1,4 @@
-// The public API of foxlens. Replace this export with the real one.
-export const name = "foxlens";
+export { capture, fitScale, type Capture, type CaptureOptions } from "./capture.js";
+export { FoxlensError, type FoxlensCode } from "./errors.js";
+export { pngSize } from "./png.js";
+export type { LensBrowser, Rect } from "./browser.js";

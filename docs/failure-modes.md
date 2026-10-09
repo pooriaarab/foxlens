@@ -96,3 +96,27 @@ Words used here:
 | D3 | The popup closes when the person clicks the page, and the answer is lost. | The panel saves the last result and shows it when it opens again. | E2E: read the saved result |
 | D5 | The person checks "Send screenshots to this server", but Firefox's data consent for `websiteContent` was never asked, so the add-on sends page content without the consent AMO requires. | Before a remote call, ask with `permissions.request({ data_collection: ["websiteContent"] })` in the click. A refusal or an error counts as no, and nothing is sent. | E2E: a remote server with no grant (a test cannot click the prompt) |
 | D4 | The model server is not on this device, and the person did not agree to send screenshots there. | The panel refuses until the person checks "Send screenshots to this server". | none (the code path is `cloud_not_allowed`, P1) |
+
+## AMO release build and listed submission (`scripts/amo-listing.mjs`)
+
+`pnpm check:amo` reads `dist-ext/`, which is what `release.yml` signs. Each
+row is a way that the listed build or the submission can go wrong.
+
+| ID | Failure | Wanted result |
+|---|---|---|
+| AR1 | `dist-ext/` is missing, so the check reads nothing | The check stops and says to run `pnpm build:ext` |
+| AR2 | A content script in the release manifest matches `127.0.0.1`, `localhost` or `*.localhost` (a test bridge) | The check stops and names the pattern |
+| AR3 | A host permission for a local host exists only for tests | The check stops, unless `local_hosts` in the listing gives a reason for that exact pattern |
+| AR4 | A file named for tests (`e2e`, `fixture`, `test`, `spec`) is in `dist-ext/` | The check stops and names the file |
+| AR5 | `dist-ext/` came from `build-ext.mjs --e2e` | AR2 or AR4 stops it |
+| AR6 | The `local_hosts` reasons go to AMO as an unknown field | `metadata` leaves them out, as it does the privacy policy |
+| AR7 | A re-run submits a version that AMO already has as listed | `version-status` says `listed`, and the step skips web-ext sign and finishes the release |
+| AR8 | AMO has the version as unlisted | `version-status` stops and says to bump the version |
+| AR9 | The AMO version lookup fails (401, 500, network) | `version-status` stops; it never guesses `absent` |
+
+foxlens already builds the E2E harness page into `dist-e2e/` with
+`build-ext.mjs --e2e`, so the release build in `dist-ext/` never holds it.
+
+| ID | Failure | Wanted result |
+|---|---|---|
+| AR10 | A change makes `build-ext.mjs --e2e` write to `dist-ext/` | `check:amo` finds the harness file (AR4) and stops |

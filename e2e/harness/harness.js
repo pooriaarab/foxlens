@@ -114,9 +114,10 @@ window.lens = {
   /** Describe and locate with a real vision model on an OpenAI-compatible server, through real foxmind. */
   async real(url, op, baseURL, model, description) {
     try {
-      const mind = createMind({ providers: [openaiCompatible({ baseURL, model, timeoutMs: 300_000 })] });
+      const mind = createMind({ only: ["browser", "local"], providers: [openaiCompatible({ baseURL, model, timeoutMs: 300_000 })] });
       const tabId = await tabFor(url);
-      return op === "describe" ? await foxlens.describe(await foxlens.capture(tabId), { mind }) : await foxlens.locate(tabId, description, { mind });
+      if (op === "describe") return await foxlens.describe(await foxlens.capture(tabId), { mind });
+      return await foxlens.locate(tabId, description, { mind, ...(op === "grid" ? { grid: 8 } : {}) });
     } catch (error) {
       return plain(error);
     }

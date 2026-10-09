@@ -197,6 +197,12 @@ try {
             const r = window.rects.Subscribe;
             return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
           }, real.docPoint) : false };
+          const realGrid = await slow("real", "canvas.html", "grid", proxyUrl, vision, "the blue Subscribe button");
+          record.notes.realModel.gridLocate = { found: realGrid.found, reason: realGrid.reason, reply: realGrid.reply, cells: realGrid.cells, docPoint: realGrid.docPoint, error: realGrid.error,
+            insideDrawnButton: realGrid.found ? await (await canvasPage()).evaluate((p) => {
+              const r = window.rects.Subscribe;
+              return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
+            }, realGrid.docPoint) : false };
           await open("buttons.html");
           const realJoin = await slow("real", "buttons.html", "locate", proxyUrl, vision, "the green Join button");
           record.notes.realModel.locateImageButton = { found: realJoin.found, reason: realJoin.reason, selector: realJoin.element?.selector, reply: realJoin.reply, modelMs: realJoin.modelMs, error: realJoin.error };

@@ -2,7 +2,8 @@
 // other files are copied. It stops when the manifest version is not the
 // package.json version, so AMO signs the version that npm publishes.
 // With --e2e it builds dist-e2e/: the same extension plus the E2E harness
-// page from e2e/harness/. The harness never ships in dist-ext/.
+// page from e2e/harness/. The harness never ships in dist-ext/; its e2e-
+// file names let check:amo catch it if it does.
 import { cpSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { build } from "esbuild";
 

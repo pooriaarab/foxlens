@@ -119,4 +119,4 @@ foxlens already builds the E2E harness page into `dist-e2e/` with
 
 | ID | Failure | Wanted result |
 |---|---|---|
-| AR10 | A change makes `build-ext.mjs --e2e` write to `dist-ext/` | `check:amo` finds the harness file (AR4) and stops |
+| AR10 | A change makes `build-ext.mjs --e2e` write to `dist-ext/` | `check:amo` finds `e2e-harness.html` (AR4) and stops |

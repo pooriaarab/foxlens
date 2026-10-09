@@ -36,7 +36,7 @@ function colourEyes(hex) {
   const want = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
   return {
     name: "colour-oracle", canPoint: true,
-    async ask(image) {
+    async ask(image, prompt) {
       const started = Date.now();
       const bitmap = await createImageBitmap(await (await fetch(image)).blob());
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -50,7 +50,11 @@ function colourEyes(hex) {
           [x1, y1, x2, y2] = [Math.min(x1, x), Math.min(y1, y), Math.max(x2, x), Math.max(y2, y)];
         }
       }
-      const text = x2 < 0 ? '{"found": false}'
+      // In grid mode, answer with the cell that holds the centre of the colour.
+      const grid = /grid of (\d+) x (\d+)/.exec(prompt);
+      const cell = grid && x2 >= 0
+        ? Math.floor(((y1 + y2) / 2 / bitmap.height) * grid[2]) * grid[1] + Math.floor(((x1 + x2) / 2 / bitmap.width) * grid[1]) + 1 : 0;
+      const text = x2 < 0 ? '{"found": false}' : grid ? JSON.stringify({ cell })
         : JSON.stringify({ bbox_2d: [per(x1, bitmap.width), per(y1, bitmap.height), per(x2, bitmap.width), per(y2, bitmap.height)] });
       return { text, provider: "colour-oracle", tier: "browser", model: `colour #${hex}`, ms: Date.now() - started };
     },

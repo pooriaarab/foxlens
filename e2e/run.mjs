@@ -134,6 +134,12 @@ try {
       await canvas.reload({ waitUntil: "load" });
       check(`${at}: a reload after the capture is stale (L12)`, "stale", (await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true })).reason);
 
+      // Grid mode (M8): numbered cells over the page, then finer cells over the chosen area.
+      const gridded = await lens("locate", "canvas.html", "the blue Subscribe button", blue, { grid: 8 });
+      check(`${at}: grid mode maps inside the drawn button and removes the grid`, [true, [true, true], false],
+        [await inside(gridded, "Subscribe"), gridded.cells?.map((n) => Number.isInteger(n)), await canvas.evaluate(() => !!document.getElementById("foxlens-grid"))]);
+      check(`${at}: a cell that does not exist is refused (M8)`, "out_of_image", (await lens("locate", "canvas.html", "x", { reply: '{"cell": 99}' }, { grid: 8 })).reason);
+
       const buttonsPage = await open("buttons.html");
       const join = await lens("locate", "buttons.html", "the green Join button", { colour: "16a34a" });
       check(`${at}: image-only button resolves to the button (L6)`, ["button", "button", "#subscribe"], [join.element?.tag, join.element?.role, join.element?.selector]);

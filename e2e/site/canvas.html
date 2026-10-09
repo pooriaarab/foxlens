@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Canvas fixture</title>
+    <style>
+      body { margin: 0; height: 2000px; font: 16px sans-serif; background: #fff; }
+      h1 { margin: 0; padding: 20px; height: 40px; }
+      canvas { position: absolute; left: 0; top: 120px; }
+    </style>
+  </head>
+  <body>
+    <h1>Daily news</h1>
+    <canvas id="board" width="1000" height="500"></canvas>
+    <p id="log" style="position: absolute; top: 640px; left: 20px">none</p>
+    <script>
+      // A sign-up box drawn on a canvas: the DOM has no button to find.
+      const board = document.getElementById("board");
+      const draw = board.getContext("2d");
+      const buttons = { Cancel: [80, 60, 180, 56, "#e5e7eb", "#111"], Subscribe: [620, 300, 220, 64, "#1d4ed8", "#fff"] };
+      for (const [label, [x, y, w, h, fill, ink]] of Object.entries(buttons)) {
+        draw.fillStyle = fill;
+        draw.fillRect(x, y, w, h);
+        draw.fillStyle = ink;
+        draw.font = "bold 22px sans-serif";
+        draw.fillText(label, x + 50, y + h / 2 + 8);
+      }
+      /** Where each drawn button is, in document CSS pixels, for the test. */
+      window.rects = Object.fromEntries(Object.entries(buttons).map(([k, [x, y, w, h]]) => [k, { x, y: y + 120, width: w, height: h }]));
+      board.addEventListener("click", (event) => {
+        const box = board.getBoundingClientRect();
+        const [x, y] = [event.clientX - box.left, event.clientY - box.top];
+        const hit = Object.entries(buttons).find(([, [bx, by, w, h]]) => x >= bx && x <= bx + w && y >= by && y <= by + h);
+        document.getElementById("log").textContent = hit ? hit[0] : "missed";
+      });
+    </script>
+  </body>
+</html>

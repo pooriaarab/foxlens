@@ -40,7 +40,10 @@ export function fakeBrowser(options: {
     scripting: {
       async executeScript(details) {
         if (options.scriptError) throw new Error(options.scriptError);
-        const result = details.func.name === "hitTest" ? options.hit : view;
+        const grid = details.args?.[0] as { region?: { x: number; y: number; width: number; height: number }; rows: number } | undefined;
+        const result = details.func.name === "hitTest" ? options.hit
+          : details.func.name === "drawGrid" ? { region: grid?.region ?? { x: 0, y: 0, width: view.w, height: view.h }, rows: grid?.rows || 6, sx: view.sx, sy: view.sy }
+          : details.func.name === "removeGrid" ? undefined : view;
         return [{ frameId: 0, documentId: "doc-1", result }];
       },
     },

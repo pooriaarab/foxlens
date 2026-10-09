@@ -58,7 +58,7 @@ async function session(dpr, run) {
   });
   try {
     record.firefox = await fox.browser.version();
-    const harness = await fox.openExtensionPage("harness.html");
+    const harness = await fox.openExtensionPage("e2e-harness.html");
     const open = async (path) => {
       const page = await fox.open(`${site.url}/${path}`);
       await page.setViewport({ width: 1000, height: 700 });

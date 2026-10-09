@@ -82,6 +82,7 @@ Words used here:
 | P2 | The caller cannot tell where the screenshot went. | Every result has `privacy: { tier, provider, leftDevice }`. `leftDevice` is true only for the `cloud` tier. | unit; E2E |
 | P3 | `browser.trial.ml` is missing, or the `trialML` permission is not granted. | Throw `FoxlensError` code `unsupported` or `permission`, with the reason. | unit; E2E |
 | P4 | `trial.ml` image-to-text gives a caption only. It cannot point at an element. | `locate` with a captioner throws `FoxlensError` code `unsupported`. | unit |
+| P6 | Grid mode makes two model calls. The result reports only the second one, so a first call to the cloud reads as "on the device". | `privacy` covers every call: the most remote tier wins, and `leftDevice` is true when any call left the device. | unit: fake browser, cloud then local |
 | P5 | The model server answers, but the model has no vision and ignores the image. | foxlens cannot detect this before the call. The README says to pick a vision model. A wrong answer shows up in `check.match` and `nothing_there`. | none (documented limit) |
 
 ## Demo extension (D)

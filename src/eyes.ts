@@ -26,4 +26,10 @@ export interface Privacy {
   leftDevice: boolean;
 }
 
-export const privacyOf = (seen: Seen): Privacy => ({ tier: seen.tier, provider: seen.provider, model: seen.model, leftDevice: seen.tier === "cloud" });
+const REACH: Record<Tier, number> = { browser: 0, local: 1, cloud: 2 };
+
+/** Where the screenshot went over one or more calls: the most remote call wins. */
+export function privacyOf(...calls: Seen[]): Privacy {
+  const far = calls.reduce((a, b) => (REACH[b.tier] > REACH[a.tier] ? b : a));
+  return { tier: far.tier, provider: far.provider, model: far.model, leftDevice: calls.some((c) => c.tier === "cloud") };
+}

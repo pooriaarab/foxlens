@@ -85,7 +85,8 @@ function cellRect(region: Rect, cols: number, rows: number, cell: number): Rect 
 export interface GridAnswer {
   /** The first capture, for the hit test. */
   shot: Capture;
-  seen: Seen;
+  /** Every model call, in order. */
+  seen: Seen[];
   cells: number[];
   read: CellRead;
   docPoint?: Point;
@@ -94,7 +95,7 @@ export interface GridAnswer {
 /** Two grid passes: `cols` columns over the viewport, then 6 x 6 cells over the 3 x 3 cells around the answer. */
 export async function gridLocate(browser: LensBrowser, tabId: number, eyes: Eyes, description: string, cols: number, signal?: AbortSignal): Promise<GridAnswer> {
   const first = await pass(browser, tabId, eyes, description, cols, 0, undefined, signal);
-  if (!first.read.ok) return { shot: first.shot, seen: first.seen, cells: [], read: first.read };
+  if (!first.read.ok) return { shot: first.shot, seen: [first.seen], cells: [], read: first.read };
   const view = first.drawn.region;
   const hit = cellRect(view, cols, first.drawn.rows, first.read.cell);
   const x = Math.max(view.x, hit.x - hit.width);
@@ -102,8 +103,8 @@ export async function gridLocate(browser: LensBrowser, tabId: number, eyes: Eyes
   const near = { x, y, width: Math.min(view.x + view.width, hit.x + 2 * hit.width) - x, height: Math.min(view.y + view.height, hit.y + 2 * hit.height) - y };
   const second = await pass(browser, tabId, eyes, description, 6, 6, near, signal);
   const cells = second.read.ok ? [first.read.cell, second.read.cell] : [first.read.cell];
-  if (!second.read.ok) return { shot: first.shot, seen: second.seen, cells, read: second.read };
+  if (!second.read.ok) return { shot: first.shot, seen: [first.seen, second.seen], cells, read: second.read };
   const fine = cellRect(second.drawn.region, 6, 6, second.read.cell);
   const docPoint = { x: second.drawn.sx + fine.x + fine.width / 2, y: second.drawn.sy + fine.y + fine.height / 2 };
-  return { shot: first.shot, seen: second.seen, cells, read: second.read, docPoint };
+  return { shot: first.shot, seen: [first.seen, second.seen], cells, read: second.read, docPoint };
 }

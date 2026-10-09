@@ -41,11 +41,11 @@ export type CaptureFacts = Omit<Capture, "dataUrl">;
 
 interface Base {
   description: string;
-  /** The model's raw reply. */
+  /** The model's raw reply (the last one in grid mode). */
   reply: string;
   privacy: Privacy;
   capture: CaptureFacts;
-  /** Time spent in the model call. */
+  /** Time spent in the model calls. */
   modelMs: number;
   /** In grid mode, the cells the model named. */
   cells?: number[];
@@ -116,9 +116,10 @@ export async function locate<C extends PawControl = PawControl>(tabId: number, d
   let base: Base;
   let docPoint: Point;
   let imageBox: Box | undefined;
-  const pack = (seen: Seen, taken: Capture): Base => {
+  const pack = (calls: Seen[], taken: Capture): Base => {
     const { dataUrl: _png, ...facts } = taken;
-    return { description, reply: seen.text, privacy: privacyOf(seen), capture: facts, modelMs: seen.ms };
+    const last = calls.at(-1)!;
+    return { description, reply: last.text, privacy: privacyOf(...calls), capture: facts, modelMs: calls.reduce((ms, c) => ms + c.ms, 0) };
   };
   if (options.grid) {
     const answer = await gridLocate(browser, tabId, eyes, description, options.grid, options.signal);
@@ -130,7 +131,7 @@ export async function locate<C extends PawControl = PawControl>(tabId: number, d
     shot = options.capture ?? (await capture(tabId, { browser }));
     const coordinates = options.coordinates ?? "per1000";
     const seen = await eyes.ask(shot.dataUrl, pointPrompt(description, shot.width, shot.height, coordinates), { json: true, signal: options.signal });
-    base = pack(seen, shot);
+    base = pack([seen], shot);
     const read = readPoint(seen.text, { width: shot.width, height: shot.height, coordinates });
     if (!read.ok) return { ...base, found: false, reason: read.reason };
     docPoint = toDocument(shot, read.point);

@@ -66,11 +66,15 @@ export interface ElementInfo {
 }
 
 export type Hit =
-  | { kind: "stale" | "offscreen" | "nothing" }
+  | { kind: "stale" | "offscreen" | "nothing" | "covered" | "clicked" }
   | { kind: "hit"; point: { x: number; y: number }; element: ElementInfo; scrolled: boolean; mutations: number; lensNode: number; foxpawNode?: number };
 
-/** Finds the element at a document point, through open and closed shadow roots and same-origin frames. */
-export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: number; sx: number; sy: number; mutations: number }): Hit {
+/**
+ * Finds the element at a document point, through open and closed shadow roots and
+ * same-origin frames. With `click` (a lensNode from an earlier hit), it clicks the
+ * point only when the same element is still there and nothing covers it.
+ */
+export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: number; sx: number; sy: number; mutations: number; click?: number }): Hit {
   if (innerWidth !== at.w || innerHeight !== at.h || devicePixelRatio !== at.dpr) return { kind: "stale" };
   let [vx, vy] = [at.x - scrollX, at.y - scrollY];
   if (vx < 0 || vy < 0 || vx >= innerWidth || vy >= innerHeight) return { kind: "offscreen" };
@@ -157,8 +161,17 @@ export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: n
     }
     return parts.join(" > ");
   };
-  const r = target.getBoundingClientRect();
   const state = (window.foxlensState ??= { mutations: 0, ids: new WeakMap(), nodes: new Map(), next: 1 });
+  if (at.click !== undefined) {
+    if (target !== state.nodes.get(at.click)?.deref()) return { kind: "stale" };
+    if (cover) return { kind: "covered" };
+    const init = { bubbles: true, cancelable: true, composed: true, clientX: vx, clientY: vy, button: 0 };
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      top.dispatchEvent(type.startsWith("pointer") ? new PointerEvent(type, { ...init, pointerId: 1, isPrimary: true }) : new MouseEvent(type, init));
+    }
+    return { kind: "clicked" };
+  }
+  const r = target.getBoundingClientRect();
   if (!state.ids.has(target)) state.ids.set(target, state.next++);
   const lensNode = state.ids.get(target)!;
   state.nodes.set(lensNode, new WeakRef(target));
@@ -179,4 +192,19 @@ export function hitTest(at: { x: number; y: number; w: number; h: number; dpr: n
     lensNode,
     ...(foxpawNode === undefined ? {} : { foxpawNode }),
   };
+}
+
+/** Draws a box around an element, in document CSS pixels. Uses the live element when it is in the top page. */
+export function drawOutline(at: { lensNode: number; rect: { x: number; y: number; width: number; height: number }; colour: string; ms: number }) {
+  document.getElementById("foxlens-outline")?.remove();
+  const live = window.foxlensState?.nodes.get(at.lensNode)?.deref();
+  const r = live?.isConnected && live.ownerDocument === document ? live.getBoundingClientRect() : null;
+  const rect = r ? { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height } : at.rect;
+  const box = document.createElement("div");
+  box.id = "foxlens-outline";
+  box.style.cssText = `position:absolute;left:${rect.x}px;top:${rect.y}px;width:${rect.width}px;height:${rect.height}px;` +
+    `outline:3px solid ${at.colour};outline-offset:0;box-sizing:border-box;pointer-events:none;z-index:2147483647;margin:0`;
+  document.documentElement.append(box);
+  if (at.ms > 0) setTimeout(() => box.remove(), at.ms);
+  return rect;
 }

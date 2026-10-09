@@ -5,8 +5,11 @@ import { FoxlensError } from "./errors.js";
 import { privacyOf, type Eyes, type Privacy } from "./eyes.js";
 
 /** Throws when a chat provider in the Mind is on the cloud tier and the caller did not allow it. */
+/** Ollama names models that run on ollama.com "<name>-cloud" or "<name>:cloud", on a localhost server. */
+export const remoteModel = (model: string) => /[-:]cloud$/i.test(model);
+
 export function guardCloud(mind: Mind, allowCloud = false): void {
-  const cloud = mind.providers.filter((p) => p.tier === "cloud" && p.capabilities.includes("chat")).map((p) => p.name);
+  const cloud = mind.providers.filter((p) => (p.tier === "cloud" || remoteModel(p.model)) && p.capabilities.includes("chat")).map((p) => `${p.name} ${p.model}`);
   if (cloud.length && !allowCloud) {
     throw new FoxlensError("cloud_not_allowed", `The Mind can send the screenshot to a cloud provider (${cloud.join(", ")}). Pass allowCloud: true to allow it, or use only browser and local providers.`);
   }
@@ -27,7 +30,8 @@ export function mindEyes(mind: Mind, options: { allowCloud?: boolean; maxTokens?
       const content = [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: image } }] as unknown as string;
       const messages: Message[] = [{ role: "user", content }];
       const reply = await mind.chat(messages, { temperature: 0, maxTokens: options.maxTokens ?? 2048, ...(signal ? { signal } : {}) });
-      return { text: reply.message.content ?? "", provider: reply.provider, tier: reply.tier, model: reply.model, ms: reply.ms };
+      // A -cloud model leaves the device even when the server is on localhost.
+      return { text: reply.message.content ?? "", provider: reply.provider, tier: remoteModel(reply.model) ? "cloud" : reply.tier, model: reply.model, ms: reply.ms };
     },
   };
 }

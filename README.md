@@ -155,6 +155,15 @@ tier, `describe` and `locate` throw `cloud_not_allowed` before any call. Pass
 `allowCloud: true` to allow it. For a local-only Mind, use foxmind's
 `only: ["browser", "local"]`.
 
+Ollama models whose name ends in `-cloud` (for example
+`qwen3-vl:235b-cloud`) run on ollama.com, even though the server is on
+localhost and foxmind calls it `local`. foxlens treats them as the cloud
+tier: it refuses them without `allowCloud`, and reports `leftDevice: true`.
+
+`allowCloud` guards a foxmind Mind only. When you pass your own `eyes`,
+foxlens cannot check where they send the image before the call. It reports
+the tier your eyes give.
+
 ## API
 
 foxlens is a library. It has no CLI and no MCP server.

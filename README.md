@@ -105,9 +105,13 @@ flowchart LR
    scale (0 to 1000 by default, as Qwen-VL models answer). `readPoint` reads
    the reply in the shapes models use, and refuses values outside the image.
    It does not clamp them.
-3. The point becomes document CSS pixels. In the page, foxlens subtracts the
-   current scroll, so a scroll after the capture does not move the point. A
-   change of viewport size, zoom or DPR gives `stale`.
+3. The point becomes document CSS pixels. When the page scrolled after the
+   capture, foxlens first looks at the viewport point the model saw. A fixed
+   element there is still there, so foxlens keeps that point
+   (`anchor: "viewport"`). Otherwise it subtracts the current scroll from the
+   document point. When a fixed or sticky layer now lies on that point, or
+   the element the model saw was sticky, the result is `stale`. A change of
+   viewport size, zoom or DPR also gives `stale`.
 4. A bundled page function hit-tests the point. It goes into closed shadow
    roots with Firefox's `openOrClosedShadowRoot` and into same-origin frames.
    It walks up to the nearest control and names any element that covers it.
@@ -159,7 +163,7 @@ foxlens is a library. It has no CLI and no MCP server.
 |---|---|
 | `capture(tabId, { rect?, scale?, maxSide? })` | Screenshots the viewport, or a rect in document CSS pixels. Returns `dataUrl`, `width`, `height`, `rect`, `pxPerCss` (measured), `downscaled`, `dpr`, `zoom`, `scroll`, `viewport`, `url`, `documentId`, `mutations` and `at`. |
 | `describe(image, { mind? \| eyes?, allowCloud?, prompt?, signal? })` | Describes a `Capture` or a PNG data URL. Returns `{ text, privacy, ms }`. |
-| `locate(tabId, description, { mind? \| eyes?, allowCloud?, grid?, coordinates?, capture?, snapshot?, signal? })` | Finds an element. A found result has `point` (viewport), `docPoint`, `imageBox`, `docBox`, `element`, `check`, `changed`, `privacy`, `reply`, and `control` when you pass a foxpaw `snapshot`. A result with `found: false` has `reason`: `not_found`, `out_of_image`, `bad_reply`, `offscreen`, `stale` or `nothing_there`. |
+| `locate(tabId, description, { mind? \| eyes?, allowCloud?, grid?, coordinates?, capture?, snapshot?, signal? })` | Finds an element. A found result has `point` (viewport), `anchor` (`viewport` for a fixed element, else `document`), `docPoint`, `imageBox`, `docBox`, `element`, `check`, `changed`, `privacy`, `reply`, and `control` when you pass a foxpaw `snapshot`. A result with `found: false` has `reason`: `not_found`, `out_of_image`, `bad_reply`, `offscreen`, `stale` or `nothing_there`. |
 | `clickAt(tabId, found)` | Clicks the found point with in-page pointer and mouse events. Returns `{ ok }` or `{ ok: false, reason }` with `stale`, `covered` or `offscreen`. Use it for a canvas; use foxpaw's `act` for real controls. |
 | `outline(tabId, found, { box?, colour?, ms? })` | Draws a box around the element, or around the model's box with `box: true`. |
 | `mindEyes(mind, { allowCloud?, maxTokens? })` | A vision chat model through a foxmind `Mind`. The screenshot goes out as an OpenAI `image_url` part. |

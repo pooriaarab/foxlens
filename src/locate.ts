@@ -57,6 +57,8 @@ export interface Found<C extends PawControl = PawControl> extends Base {
   point: Point;
   /** The point in document CSS pixels. */
   docPoint: Point;
+  /** "viewport" when the element is position: fixed, so a scroll does not move it; else "document". */
+  anchor: "viewport" | "document";
   /** The box the model gave, in image pixels. */
   imageBox?: Box;
   /** The same box in document CSS pixels. */
@@ -146,7 +148,7 @@ export async function locate<C extends PawControl = PawControl>(tabId: number, d
   if (hit.kind !== "hit") return { ...base, found: false, reason: hit.kind === "offscreen" ? "offscreen" : hit.kind === "nothing" ? "nothing_there" : "stale" };
   const control = hit.foxpawNode === undefined ? undefined : options.snapshot?.controls.find((c) => c.frameId === 0 && c.node === hit.foxpawNode);
   return {
-    ...base, found: true, point: hit.point, docPoint, ...(imageBox ? { imageBox, docBox: boxOnPage(shot, imageBox) } : {}), element: hit.element,
+    ...base, found: true, point: hit.point, anchor: hit.anchor, docPoint, ...(imageBox ? { imageBox, docBox: boxOnPage(shot, imageBox) } : {}), element: hit.element,
     lensNode: hit.lensNode, ...(hit.foxpawNode === undefined ? {} : { foxpawNode: hit.foxpawNode }), ...(control ? { control } : {}),
     check: matchWords(description, hit.element), changed: { scrolled: hit.scrolled, mutations: hit.mutations },
   };
@@ -164,7 +166,7 @@ export async function clickAt(tabId: number, found: Found<PawControl>, options: 
   const browser = options.browser ?? api();
   if (!found?.found) throw new FoxlensError("unsupported", "clickAt needs a result with found: true.");
   const shot = found.capture;
-  const at = { ...found.docPoint, w: shot.viewport.width, h: shot.viewport.height, dpr: shot.dpr, sx: shot.scroll.x, sy: shot.scroll.y, mutations: 0, click: found.lensNode };
+  const at = { ...found.docPoint, w: shot.viewport.width, h: shot.viewport.height, dpr: shot.dpr, sx: shot.scroll.x, sy: shot.scroll.y, mutations: 0, click: found.lensNode, anchor: found.anchor };
   let hit: Hit;
   try {
     ({ result: hit } = await inPage<Hit>(browser, tabId, hitTest, [at], shot.documentId));

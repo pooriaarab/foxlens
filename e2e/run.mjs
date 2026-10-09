@@ -239,6 +239,17 @@ try {
         await demoTab.screenshot({ path: "artifacts/demo-outline.png" });
         record.notes.demoLast = await panel.evaluate(() => browser.storage.local.get("last").then((v) => v.last));
         check(`${at}: the demo keeps the last result for the next time it opens (D3)`, "find", record.notes.demoLast?.kind);
+        // D5: a remote server needs Firefox's data consent first. A test cannot click
+        // the prompt, so the request fails, and the panel must send nothing.
+        await demoTab.bringToFront();
+        await panel.evaluate(() => {
+          document.getElementById("server").value = "http://192.0.2.10/v1";
+          document.getElementById("remote").checked = true;
+          document.getElementById("query").value = "the blue Subscribe button";
+          document.getElementById("find").click();
+        });
+        await poll(panel, () => !/working/i.test(document.getElementById("status").textContent) && document.getElementById("status").textContent, undefined, 10_000).catch(() => "");
+        check(`${at}: a remote server without data consent sends nothing (D5)`, true, /did not send the screenshot/.test(await panelText("output")));
         await demoTab.close();
       }
 

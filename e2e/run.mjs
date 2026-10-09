@@ -2,6 +2,7 @@
 // e2e/harness/), run foxlens in a real Firefox at DPR 1 and DPR 2 against the
 // fixture pages in e2e/site/, and write artifacts/e2e-<date>.json.
 // Usage: pnpm e2e [--headed]. Env: FIREFOX (the Firefox binary).
+import { mkdirSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { launch, poll, serve, writeArtifact } from "create-foxkit/e2e";
 
@@ -234,7 +235,7 @@ try {
           return !!box && ["x", "y", "width", "height"].every((k) => Math.abs(box[k] + (k === "x" ? scrollX : k === "y" ? scrollY : 0) - want[k]) < 2);
         });
         check(`${at}: the demo outlines the model's box on the canvas (D2)`, [true, true], [outlined, /canvas/.test(await panelText("output"))]);
-        (await import("node:fs")).mkdirSync("artifacts", { recursive: true });
+        mkdirSync("artifacts", { recursive: true });
         await demoTab.screenshot({ path: "artifacts/demo-outline.png" });
         record.notes.demoLast = await panel.evaluate(() => browser.storage.local.get("last").then((v) => v.last));
         check(`${at}: the demo keeps the last result for the next time it opens (D3)`, "find", record.notes.demoLast?.kind);

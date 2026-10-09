@@ -61,6 +61,7 @@ const fixedEyes = (text) => ({ name: "fixed", canPoint: true, ask: async () => (
 const eyesFor = (fake) => (fake.colour ? colourEyes(fake.colour) : fixedEyes(fake.reply));
 
 let lastShot;
+const jobs = [];
 
 /** Errors cross the WebDriver boundary as plain objects. */
 const plain = (error) => ({ error: { code: error?.code, message: error?.message ?? String(error) } });
@@ -114,4 +115,12 @@ window.lens = {
       return plain(error);
     }
   },
+  /** Start a long call and return its id; done(id) gives { value } once it ends. */
+  start(fn, url, args) {
+    const id = jobs.length;
+    jobs.push(undefined);
+    window.lens[fn](url, ...args).then((value) => (jobs[id] = { value }));
+    return id;
+  },
+  done: (id) => jobs[id],
 };

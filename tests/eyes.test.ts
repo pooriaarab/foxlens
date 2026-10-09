@@ -10,14 +10,15 @@ const image = pngOf(1000, 700);
 const servers: { close(): void }[] = [];
 afterEach(() => servers.splice(0).forEach((s) => s.close()));
 
+async function read(req: IncomingMessage) {
+  let text = "";
+  for await (const chunk of req) text += chunk;
+  return text;
+}
+
 /** A fake OpenAI-compatible server. It keeps each chat request body. */
 async function fakeServer(answer: (body: { messages: { content: unknown }[] }) => { status: number; text: string }) {
   const bodies: { messages: { content: unknown }[] }[] = [];
-  const read = async (req: IncomingMessage) => {
-    let text = "";
-    for await (const chunk of req) text += chunk;
-    return text;
-  };
   const server = createServer(async (req, res) => {
     if (req.url?.endsWith("/models")) return void res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ data: [{ id: "vision" }] }));
     const body = JSON.parse(await read(req));

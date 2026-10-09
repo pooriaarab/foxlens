@@ -2,7 +2,7 @@
 // e2e/harness/), run foxlens in a real Firefox at DPR 1 and DPR 2 against the
 // fixture pages in e2e/site/, and write artifacts/e2e-<date>.json.
 // Usage: pnpm e2e [--headed]. Env: FIREFOX (the Firefox binary).
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
 import { launch, serve, writeArtifact } from "create-foxkit/e2e";
 
 const record = { startedAt: new Date().toISOString(), checks: [], notes: {} };
@@ -16,12 +16,16 @@ const site = await serve("e2e/site");
 // origins, so a small proxy on 127.0.0.1 forwards /v1 calls without the Origin header.
 const OLLAMA = "http://127.0.0.1:11434";
 const tags = await fetch(`${OLLAMA}/api/tags`).then((r) => r.json()).catch(() => ({ models: [] }));
-const vision = process.env.FOXLENS_VISION_MODEL ?? tags.models?.map((m) => m.name).find((n) => /vl|vision|llava|moondream|minicpm-v|gemma3/i.test(n));
-const proxy = createServer(async (req, res) => {
-  let body = "";
-  for await (const chunk of req) body += chunk;
-  const answer = await fetch(`${OLLAMA}${req.url}`, { method: req.method, headers: { "content-type": "application/json" }, body: req.method === "GET" ? undefined : body });
-  res.writeHead(answer.status, { "content-type": "application/json" }).end(await answer.text());
+// Prefer an instruct model: a thinking model spends minutes before it answers.
+const vision = process.env.FOXLENS_VISION_MODEL ?? (tags.models ?? []).map((m) => m.name)
+  .filter((n) => /vl|vision|llava|moondream|minicpm-v|gemma3/i.test(n)).toSorted((a, b) => /instruct/.test(b) - /instruct/.test(a))[0];
+const proxy = createServer((req, res) => {
+  const forward = request(`${OLLAMA}${req.url}`, { method: req.method, headers: { "content-type": "application/json" } }, (answer) => {
+    res.writeHead(answer.statusCode ?? 502, { "content-type": "application/json" });
+    answer.pipe(res);
+  });
+  forward.on("error", (error) => res.writeHead(502).end(error.message));
+  req.pipe(forward);
 });
 await new Promise((done) => proxy.listen(0, "127.0.0.1", done));
 const proxyUrl = `http://127.0.0.1:${proxy.address().port}/v1`;
@@ -46,13 +50,22 @@ async function session(dpr, run) {
       return page;
     };
     const lens = (fn, path, ...args) => harness.evaluate((f, url, a) => window.lens[f](url, ...a), fn, `${site.url}/${path}`, args);
+    /** Like lens, for calls that outlast the WebDriver timeout: start in the page, then poll. */
+    const slow = async (fn, path, ...args) => {
+      const id = await harness.evaluate((f, url, a) => window.lens.start(f, url, a), fn, `${site.url}/${path}`, args);
+      for (;;) {
+        const done = await harness.evaluate((i) => window.lens.done(i), id);
+        if (done) return done.value;
+        await new Promise((wake) => setTimeout(wake, 1000));
+      }
+    };
     /** Runs JavaScript in Firefox's parent process (chrome scope). */
     const chrome = async (expression) => {
       const tree = await fox.browser.connection.send("browsingContext.getTree", { "moz:scope": "chrome" });
       return fox.browser.connection.send("script.evaluate", { expression, target: { context: tree.result.contexts[0].context }, awaitPromise: true });
     };
     const canvasPage = () => fox.browser.pages().then((pages) => pages.find((p) => p.url().endsWith("/canvas.html")));
-    await run({ fox, open, lens, chrome, canvasPage, at: `DPR ${dpr}` });
+    await run({ fox, open, lens, slow, chrome, canvasPage, at: `DPR ${dpr}` });
   } finally {
     await fox.close();
   }
@@ -60,7 +73,7 @@ async function session(dpr, run) {
 
 try {
   for (const dpr of [1, 2]) {
-    await session(dpr, async ({ fox, open, lens, chrome, canvasPage, at }) => {
+    await session(dpr, async ({ fox, open, lens, slow, chrome, canvasPage, at }) => {
       // Capture (C1-C3, C6)
       const page = await open("capture.html");
       const view = await lens("captureAt", "capture.html", {}, [[200, 250], [600, 250]]);
@@ -148,15 +161,15 @@ try {
         record.notes.realModel = vision ? { model: vision } : { skipped: "No vision model in Ollama. Set FOXLENS_VISION_MODEL or pull one (for example qwen3-vl:2b)." };
         if (vision) {
           const started = Date.now();
-          record.notes.realModel.describe = await lens("real", "canvas.html", "describe", proxyUrl, vision);
-          const real = await lens("real", "canvas.html", "locate", proxyUrl, vision, "the blue Subscribe button");
+          record.notes.realModel.describe = await slow("real", "canvas.html", "describe", proxyUrl, vision);
+          const real = await slow("real", "canvas.html", "locate", proxyUrl, vision, "the blue Subscribe button");
           record.notes.realModel.locate = { ...real, insideDrawnButton: real.found ? await (await canvasPage()).evaluate((p) => {
             const r = window.rects.Subscribe;
             return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
           }, real.docPoint) : false };
           await open("buttons.html");
-          const join = await lens("real", "buttons.html", "locate", proxyUrl, vision, "the green Join button");
-          record.notes.realModel.locateImageButton = { found: join.found, reason: join.reason, selector: join.element?.selector, reply: join.reply, modelMs: join.modelMs, error: join.error };
+          const realJoin = await slow("real", "buttons.html", "locate", proxyUrl, vision, "the green Join button");
+          record.notes.realModel.locateImageButton = { found: realJoin.found, reason: realJoin.reason, selector: realJoin.element?.selector, reply: realJoin.reply, modelMs: realJoin.modelMs, error: realJoin.error };
           record.notes.realModel.totalMs = Date.now() - started;
         }
       }

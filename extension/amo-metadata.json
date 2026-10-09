@@ -1,0 +1,31 @@
+{
+  "default_locale": "en-US",
+  "slug": "foxlens",
+  "name": {
+    "en-US": "foxlens — see a page with a vision model"
+  },
+  "summary": {
+    "en-US": "Take a screenshot of the current tab and ask a vision model to describe it or to find an element on it. By default the model runs on your computer. A screenshot goes to another server only after you allow it."
+  },
+  "description": {
+    "en-US": "foxlens takes a screenshot of the current tab and asks a vision model about it. Use it when a page does not show its content in the DOM, for example a button drawn on a canvas or a button that is only an image.\n\n**Who it is for:** people who build or try browser agents, and people who want a vision model to describe a page or find an element on it.\n\n**What it does**\n\n- \"Describe this tab\" takes a screenshot and asks the model what the page shows.\n- \"Find\" asks the model where an element is, for example \"the blue Subscribe button\". foxlens maps the answer back to a real element and draws an outline around it.\n- An optional numbered grid helps small models point at the right place.\n- Each result says which model answered and whether the screenshot left this device.\n\n**What leaves your computer, and when**\n\n- The default model server is Ollama on this computer (127.0.0.1). The screenshot and your question go only to that server.\n- Another server (off by default): if you enter a server address that is not on this computer, foxlens sends the screenshot and your question to it only after you tick \"Send screenshots to this server\" and Firefox's data consent for website content says yes.\n- An Ollama model whose name ends in \"-cloud\" runs on Ollama's servers. foxlens treats it as a cloud model and refuses it unless you tick the same box.\n- Firefox's on-device model (optional): the screenshot stays in Firefox. Firefox downloads the model from Mozilla's model hub the first time.\n- foxlens has no server and sends nothing to its authors.\n\n**Permissions**\n\n- Access to all websites and scripting: take a screenshot of the tab you choose and find the element on that page.\n- Storage: keep your server address, model name and the last result in your browser.\n- Trial ML (optional, asked from a click): use Firefox's on-device image-to-text model.\n\nfoxlens is an early version. The source code is MIT licensed."
+  },
+  "categories": {
+    "firefox": [
+      "web-development"
+    ]
+  },
+  "homepage": {
+    "en-US": "https://github.com/pooriaarab/foxlens"
+  },
+  "support_url": {
+    "en-US": "https://github.com/pooriaarab/foxlens/issues"
+  },
+  "version": {
+    "license": "MIT",
+    "approval_notes": "The uploaded source.zip is the git tree of this release. To build: install Node 24 and pnpm (corepack enable), run `pnpm install --frozen-lockfile`, then `pnpm build:ext`. The output is dist-ext/. esbuild bundles extension/*.js with src/ and the foxmind npm package; the other files are copied unmodified. To try it: run Ollama on this computer with a vision model (`ollama pull qwen3-vl:2b-instruct`, then `OLLAMA_ORIGINS=\"moz-extension://*\" ollama serve`), open the foxlens panel and click \"Describe this tab\". Or pick \"Firefox's on-device model\", which needs no server. No account is needed."
+  },
+  "privacy_policy": {
+    "en-US": "foxlens has no server. It sends nothing to its authors and has no analytics.\n\nYour settings (server address, model name, options) and the last result stay in this Firefox profile.\n\nfoxlens sends a screenshot of the current tab and the question you typed to the vision model server that you set, only when you click \"Describe this tab\" or \"Find\". The default server is Ollama on this computer, so the data stays on this computer.\n\nData leaves your computer only in these cases, and each one is off until you turn it on:\n\n1. A server that is not on this computer. foxlens sends the screenshot and your question to it only after you tick \"Send screenshots to this server\" and Firefox's website content consent says yes. The server owner's privacy policy applies to that data.\n2. An Ollama cloud model (a model name that ends in \"-cloud\"). Ollama sends the screenshot to its own servers. foxlens refuses such a model until you tick the same box.\n\nWith Firefox's on-device model, the screenshot stays in Firefox."
+  }
+}

@@ -17,6 +17,9 @@ npm i foxlens
 foxlens uses [foxmind](https://github.com/pooriaarab/foxmind) for vision chat
 models. Install it too: `npm i foxmind`.
 
+Install the extension from AMO: [addons.mozilla.org/firefox/addon/foxlens](https://addons.mozilla.org/firefox/addon/foxlens/)
+(pending AMO review; the link works after approval).
+
 ## Example
 
 This code runs in a Firefox extension page or background script that you

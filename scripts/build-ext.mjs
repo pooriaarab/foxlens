@@ -28,6 +28,7 @@ for (const dir of dirs) {
     resolveExtensions: [".ts", ".js"],
     logLevel: "warning",
   });
-  for (const file of files.filter((f) => !f.endsWith(".js"))) cpSync(`${dir}/${file}`, `${out}/${file}`, { recursive: true });
+  // amo-metadata.json is the AMO listing, not a part of the add-on.
+  for (const file of files.filter((f) => !f.endsWith(".js") && f !== "amo-metadata.json")) cpSync(`${dir}/${file}`, `${out}/${file}`, { recursive: true });
 }
 console.log(`Built ${out}/ (version ${pkg.version}).`);

@@ -219,6 +219,7 @@ try {
           return !!box && ["x", "y", "width", "height"].every((k) => Math.abs(box[k] + (k === "x" ? scrollX : k === "y" ? scrollY : 0) - want[k]) < 2);
         });
         check(`${at}: the demo outlines the model's box on the canvas (D2)`, [true, true], [outlined, /canvas/.test(await panelText("output"))]);
+        (await import("node:fs")).mkdirSync("artifacts", { recursive: true });
         await demoTab.screenshot({ path: "artifacts/demo-outline.png" });
         record.notes.demoLast = await panel.evaluate(() => browser.storage.local.get("last").then((v) => v.last));
         check(`${at}: the demo keeps the last result for the next time it opens (D3)`, "find", record.notes.demoLast?.kind);

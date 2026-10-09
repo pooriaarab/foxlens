@@ -80,3 +80,12 @@ Words used here:
 | P3 | `browser.trial.ml` is missing, or the `trialML` permission is not granted. | Throw `FoxlensError` code `unsupported` or `permission`, with the reason. | unit; E2E |
 | P4 | `trial.ml` image-to-text gives a caption only. It cannot point at an element. | `locate` with a captioner throws `FoxlensError` code `unsupported`. | unit |
 | P5 | The model server answers, but the model has no vision and ignores the image. | foxlens cannot detect this before the call. The README says to pick a vision model. A wrong answer shows up in `check.match` and `nothing_there`. | none (documented limit) |
+
+## Demo extension (D)
+
+| # | Failure mode | Wanted behaviour | Test |
+|---|---|---|---|
+| D1 | The person cannot tell where the screenshot went. | The panel shows the answer and says "on this device" or names the remote server. | E2E: describe through the panel with a fake server |
+| D2 | Find answers, but the person cannot see which element it means. | The panel outlines the element on the page and shows its tag, role, name and text. | E2E: find through the panel |
+| D3 | The popup closes when the person clicks the page, and the answer is lost. | The panel saves the last result and shows it when it opens again. | E2E: read the saved result |
+| D4 | The model server is not on this device, and the person did not agree to send screenshots there. | The panel refuses until the person checks "Send screenshots to this server". | none (the code path is `cloud_not_allowed`, P1) |

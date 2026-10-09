@@ -20,6 +20,8 @@ export function fakeBrowser(options: {
   captureError?: string;
   scriptError?: string;
   calls?: unknown[];
+  /** What the page answers to hitTest. */
+  hit?: unknown;
 }): LensBrowser {
   const view: View = { sx: 0, sy: 0, w: 1000, h: 700, dpr: 1, docW: 1000, docH: 700, url: "http://127.0.0.1/a.html", mutations: 0, ...options.view };
   return {
@@ -36,9 +38,10 @@ export function fakeBrowser(options: {
       },
     },
     scripting: {
-      async executeScript() {
+      async executeScript(details) {
         if (options.scriptError) throw new Error(options.scriptError);
-        return [{ frameId: 0, documentId: "doc-1", result: view }];
+        const result = details.func.name === "hitTest" ? options.hit : view;
+        return [{ frameId: 0, documentId: "doc-1", result }];
       },
     },
   };

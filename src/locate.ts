@@ -2,12 +2,20 @@ import { api, inPage, type LensBrowser } from "./browser.js";
 import { capture, type Capture } from "./capture.js";
 import { FoxlensError, fromFirefox } from "./errors.js";
 import { privacyOf, type Eyes, type Privacy } from "./eyes.js";
-import { hitTest, type ElementInfo, type Hit } from "./page.js";
+import { drawOutline, hitTest, type ElementInfo, type Hit } from "./page.js";
 import { readPoint, toDocument, type Box, type Coordinates, type Point } from "./reply.js";
 import { eyesOf } from "./vision.js";
 import type { Mind } from "foxmind";
 
-export interface LocateOptions {
+/** The part of a foxpaw Control that foxlens matches on. */
+export interface PawControl {
+  frameId: number;
+  node: number;
+}
+
+export interface LocateOptions<C extends PawControl = PawControl> {
+  /** A foxpaw Snapshot taken before locate. Its matching control comes back as `control`. */
+  snapshot?: { controls: C[] };
   /** A foxmind Mind with a vision chat model. */
   mind?: Mind;
   /** Any vision model that can point. Used before `mind`. */
@@ -35,7 +43,7 @@ interface Base {
   modelMs: number;
 }
 
-export interface Found extends Base {
+export interface Found<C extends PawControl = PawControl> extends Base {
   found: true;
   /** The point in viewport CSS pixels, at the time of the hit test. */
   point: Point;
@@ -48,6 +56,8 @@ export interface Found extends Base {
   lensNode: number;
   /** foxpaw's node number for the element, when foxpaw has read the page. */
   foxpawNode?: number;
+  /** The foxpaw control for the element, from `snapshot`. Pass it to foxpaw's act with that snapshot. */
+  control?: C;
   /** How well the description's words match the element's role, name and text, from 0 to 1. */
   check: { match: number; words: string[] };
   /** What changed since the capture. A scroll is corrected. DOM changes are only counted. */
@@ -60,7 +70,7 @@ export interface NotFound extends Base {
   reason: NotFoundReason;
 }
 
-export type LocateResult = Found | NotFound;
+export type LocateResult<C extends PawControl = PawControl> = Found<C> | NotFound;
 
 const STOP = new Set(["the", "and", "for", "with", "that", "this", "find", "click", "into", "from", "near", "next", "one"]);
 
@@ -80,7 +90,7 @@ export function pointPrompt(description: string, width: number, height: number, 
 }
 
 /** Asks a vision model where the element is, maps the point back to the page, and hit-tests it. */
-export async function locate(tabId: number, description: string, options: LocateOptions): Promise<LocateResult> {
+export async function locate<C extends PawControl = PawControl>(tabId: number, description: string, options: LocateOptions<C>): Promise<LocateResult<C>> {
   const browser = options.browser ?? api();
   const eyes = eyesOf(options);
   if (!eyes.canPoint) throw new FoxlensError("unsupported", `${eyes.name} gives captions only and cannot point at an element. Use a vision chat model.`);
@@ -101,10 +111,46 @@ export async function locate(tabId: number, description: string, options: Locate
     if (mapped.code === "stale") return { ...base, found: false, reason: "stale" };
     throw mapped;
   }
-  if (hit.kind !== "hit") return { ...base, found: false, reason: hit.kind === "nothing" ? "nothing_there" : hit.kind };
+  if (hit.kind !== "hit") return { ...base, found: false, reason: hit.kind === "offscreen" ? "offscreen" : hit.kind === "nothing" ? "nothing_there" : "stale" };
+  const control = hit.foxpawNode === undefined ? undefined : options.snapshot?.controls.find((c) => c.frameId === 0 && c.node === hit.foxpawNode);
   return {
     ...base, found: true, point: hit.point, docPoint, ...(read.box ? { imageBox: read.box } : {}), element: hit.element,
-    lensNode: hit.lensNode, ...(hit.foxpawNode === undefined ? {} : { foxpawNode: hit.foxpawNode }),
+    lensNode: hit.lensNode, ...(hit.foxpawNode === undefined ? {} : { foxpawNode: hit.foxpawNode }), ...(control ? { control } : {}),
     check: matchWords(description, hit.element), changed: { scrolled: hit.scrolled, mutations: hit.mutations },
   };
+}
+
+export type ClickResult = { ok: true } | { ok: false; reason: "stale" | "covered" | "offscreen" };
+
+/**
+ * Clicks the point of a found element with in-page pointer and mouse events. Use it
+ * for elements foxpaw cannot act on, such as a canvas. It refuses when the page
+ * navigated, the layout changed, another element is now at the point, or an
+ * element covers it.
+ */
+export async function clickAt(tabId: number, found: Found<PawControl>, options: { browser?: LensBrowser } = {}): Promise<ClickResult> {
+  const browser = options.browser ?? api();
+  const shot = found.capture;
+  const at = { ...found.docPoint, w: shot.viewport.width, h: shot.viewport.height, dpr: shot.dpr, sx: shot.scroll.x, sy: shot.scroll.y, mutations: 0, click: found.lensNode };
+  let hit: Hit;
+  try {
+    ({ result: hit } = await inPage<Hit>(browser, tabId, hitTest, [at], shot.documentId));
+  } catch (error) {
+    const mapped = fromFirefox(error, "Cannot click the page");
+    if (mapped.code === "stale") return { ok: false, reason: "stale" };
+    throw mapped;
+  }
+  if (hit.kind === "clicked") return { ok: true };
+  return { ok: false, reason: hit.kind === "offscreen" || hit.kind === "covered" ? hit.kind : "stale" };
+}
+
+/** Draws a box around a found element. With `ms`, the box goes away after that time. Returns the box in document CSS pixels. */
+export async function outline(tabId: number, found: Found<PawControl>, options: { colour?: string; ms?: number; browser?: LensBrowser } = {}) {
+  const browser = options.browser ?? api();
+  const args = { lensNode: found.lensNode, rect: found.element.rect, colour: options.colour ?? "#e11d48", ms: options.ms ?? 0 };
+  try {
+    return (await inPage<Found["element"]["rect"]>(browser, tabId, drawOutline, [args], found.capture.documentId)).result;
+  } catch (error) {
+    throw fromFirefox(error, "Cannot draw the outline");
+  }
 }

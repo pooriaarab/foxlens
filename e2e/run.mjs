@@ -134,7 +134,7 @@ try {
       await canvas.reload({ waitUntil: "load" });
       check(`${at}: a reload after the capture is stale (L12)`, "stale", (await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true })).reason);
 
-      await open("buttons.html");
+      const buttonsPage = await open("buttons.html");
       const join = await lens("locate", "buttons.html", "the green Join button", { colour: "16a34a" });
       check(`${at}: image-only button resolves to the button (L6)`, ["button", "button", "#subscribe"], [join.element?.tag, join.element?.role, join.element?.selector]);
       const upgrade = await lens("locate", "buttons.html", "the orange Upgrade button", { colour: "ea580c" });
@@ -148,6 +148,30 @@ try {
       check(`${at}: cross-origin frame is reported, not guessed (L9)`, ["iframe", "cross-origin"], [donate.element?.tag, donate.element?.frame]);
       const follow = await lens("locate", "frames.html", "the teal Follow button", { colour: "0d9488" });
       check(`${at}: closed shadow root is searched (L10)`, ["button", "Follow", "closed"], [follow.element?.tag, follow.element?.name, follow.element?.shadow]);
+
+      // Act (A1-A4): foxpaw's act, clickAt on a canvas, a stale click, and the outline.
+      const paw = await lens("pawClick", "buttons.html", "the green Join button", { colour: "16a34a" });
+      check(`${at}: foxpaw acts on the located control (A1)`, [true, true, "subscribed"], [paw.control, paw.acted?.ok, await buttonsPage.title()]);
+      await canvas.evaluate(() => window.scrollTo(0, 50));
+      const clicked = await lens("locateAndClick", "canvas.html", "the blue Subscribe button", blue);
+      check(`${at}: clickAt clicks the drawn canvas button (A2)`, [false, true, "Subscribe"],
+        [clicked.control, clicked.clicked?.ok, await canvas.evaluate(() => document.getElementById("log").textContent)]);
+      await canvas.evaluate(() => { document.getElementById("log").textContent = "none"; });
+      await lens("locateOnly", "canvas.html", "the blue Subscribe button", blue);
+      await canvas.evaluate(() => { const board = document.getElementById("board"); board.replaceWith(board.cloneNode(true)); });
+      const staleClick = await lens("clickLast", "canvas.html");
+      check(`${at}: clickAt refuses an element that changed (A3)`, ["stale", "none"], [staleClick.reason, await canvas.evaluate(() => document.getElementById("log").textContent)]);
+      await canvas.reload({ waitUntil: "load" });
+      await lens("setZoom", "buttons.html", 1.5);
+      await buttonsPage.evaluate(() => window.scrollTo(0, 100));
+      await lens("outlineFound", "buttons.html", "the green Join button", { colour: "16a34a" });
+      const drawnAt = await buttonsPage.evaluate(() => {
+        const a = document.getElementById("foxlens-outline")?.getBoundingClientRect();
+        const b = document.getElementById("subscribe").getBoundingClientRect();
+        return !!a && ["x", "y", "width", "height"].every((k) => Math.abs(a[k] - b[k]) < 1.5);
+      });
+      check(`${at}: the outline sits on the element at 150 % zoom, scrolled (A4)`, true, drawnAt);
+      await lens("setZoom", "buttons.html", 1);
 
       if (dpr === 1) {
         // Describe with Firefox's own image-to-text model (P3), then with a real local model when one runs.

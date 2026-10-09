@@ -10,6 +10,9 @@
       "data_collection_permissions": {
         "required": [
           "none"
+        ],
+        "optional": [
+          "websiteContent"
         ]
       }
     }
@@ -18,16 +21,18 @@
     "scripting",
     "storage"
   ],
-  "background": {
-    "scripts": [
-      "background.js"
-    ]
-  },
   "action": {
     "default_title": "foxlens demo",
-    "default_popup": "popup.html"
+    "default_popup": "panel.html"
   },
   "host_permissions": [
     "<all_urls>"
-  ]
+  ],
+  "optional_permissions": [
+    "trialML"
+  ],
+  "sidebar_action": {
+    "default_title": "foxlens demo",
+    "default_panel": "panel.html"
+  }
 }

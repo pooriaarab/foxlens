@@ -215,10 +215,10 @@ try {
         await poll(panel, () => !/working/i.test(document.getElementById("status").textContent) && document.getElementById("status").textContent);
         const outlined = await demoTab.evaluate(() => {
           const box = document.getElementById("foxlens-outline")?.getBoundingClientRect();
-          const board = document.getElementById("board").getBoundingClientRect();
-          return !!box && Math.abs(box.top - board.top) < 1.5 && Math.abs(box.width - board.width) < 1.5;
+          const want = window.rects.Subscribe;
+          return !!box && ["x", "y", "width", "height"].every((k) => Math.abs(box[k] + (k === "x" ? scrollX : k === "y" ? scrollY : 0) - want[k]) < 2);
         });
-        check(`${at}: the demo outlines the found element on the page (D2)`, [true, true], [outlined, /canvas/.test(await panelText("output"))]);
+        check(`${at}: the demo outlines the model's box on the canvas (D2)`, [true, true], [outlined, /canvas/.test(await panelText("output"))]);
         await demoTab.screenshot({ path: "artifacts/demo-outline.png" });
         record.notes.demoLast = await panel.evaluate(() => browser.storage.local.get("last").then((v) => v.last));
         check(`${at}: the demo keeps the last result for the next time it opens (D3)`, "find", record.notes.demoLast?.kind);

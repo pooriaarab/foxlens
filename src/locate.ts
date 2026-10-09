@@ -59,6 +59,8 @@ export interface Found<C extends PawControl = PawControl> extends Base {
   docPoint: Point;
   /** The box the model gave, in image pixels. */
   imageBox?: Box;
+  /** The same box in document CSS pixels. */
+  docBox?: { x: number; y: number; width: number; height: number };
   element: ElementInfo;
   /** foxlens's id for the element in the page, for `clickAt` and `outline`. */
   lensNode: number;
@@ -95,6 +97,12 @@ export function pointPrompt(description: string, width: number, height: number, 
   return `Find this element in the screenshot: "${description}". The image is ${width} x ${height} pixels. ` +
     `Give its bounding box ${scale}, x from the left edge and y from the top edge. ` +
     'Reply with JSON only: {"bbox_2d": [x1, y1, x2, y2]}. If it is not in the image, reply {"found": false}.';
+}
+
+function boxOnPage(shot: Capture, [x1, y1, x2, y2]: Box) {
+  const a = toDocument(shot, { x: x1, y: y1 });
+  const b = toDocument(shot, { x: x2, y: y2 });
+  return { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y };
 }
 
 /** Asks a vision model where the element is, maps the point back to the page, and hit-tests it. */
@@ -138,7 +146,7 @@ export async function locate<C extends PawControl = PawControl>(tabId: number, d
   if (hit.kind !== "hit") return { ...base, found: false, reason: hit.kind === "offscreen" ? "offscreen" : hit.kind === "nothing" ? "nothing_there" : "stale" };
   const control = hit.foxpawNode === undefined ? undefined : options.snapshot?.controls.find((c) => c.frameId === 0 && c.node === hit.foxpawNode);
   return {
-    ...base, found: true, point: hit.point, docPoint, ...(imageBox ? { imageBox } : {}), element: hit.element,
+    ...base, found: true, point: hit.point, docPoint, ...(imageBox ? { imageBox, docBox: boxOnPage(shot, imageBox) } : {}), element: hit.element,
     lensNode: hit.lensNode, ...(hit.foxpawNode === undefined ? {} : { foxpawNode: hit.foxpawNode }), ...(control ? { control } : {}),
     check: matchWords(description, hit.element), changed: { scrolled: hit.scrolled, mutations: hit.mutations },
   };
@@ -168,10 +176,15 @@ export async function clickAt(tabId: number, found: Found<PawControl>, options: 
   return { ok: false, reason: hit.kind === "offscreen" || hit.kind === "covered" ? hit.kind : "stale" };
 }
 
-/** Draws a box around a found element. With `ms`, the box goes away after that time. Returns the box in document CSS pixels. */
-export async function outline(tabId: number, found: Found<PawControl>, options: { colour?: string; ms?: number; browser?: LensBrowser } = {}) {
+/**
+ * Draws a box around a found element, or with `box: true` around the box the model
+ * gave (useful on a canvas, where the element is the whole canvas). With `ms`, the
+ * box goes away after that time. Returns the box in document CSS pixels.
+ */
+export async function outline(tabId: number, found: Found<PawControl>, options: { box?: boolean; colour?: string; ms?: number; browser?: LensBrowser } = {}) {
   const browser = options.browser ?? api();
-  const args = { lensNode: found.lensNode, rect: found.element.rect, colour: options.colour ?? "#e11d48", ms: options.ms ?? 0 };
+  const model = options.box && found.docBox;
+  const args = { lensNode: model ? 0 : found.lensNode, rect: model || found.element.rect, colour: options.colour ?? "#e11d48", ms: options.ms ?? 0 };
   try {
     return (await inPage<Found["element"]["rect"]>(browser, tabId, drawOutline, [args], found.capture.documentId)).result;
   } catch (error) {

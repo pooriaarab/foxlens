@@ -27,6 +27,15 @@ function mind() {
   return createMind({ only: value("remote") ? ["local", "cloud"] : ["local"], providers: [openaiCompatible({ baseURL: server, model: value("model") })] });
 }
 
+/**
+ * Asks Firefox for data consent before a screenshot goes to a server that is not
+ * on this device. Call it in the click, before any await. An error counts as no.
+ */
+const consent = () => (value("remote") && !local(value("server"))
+  ? browser.permissions.request({ data_collection: ["websiteContent"] }).catch(() => false)
+  : Promise.resolve(true));
+const NO_CONSENT = 'Firefox did not grant the "websiteContent" data permission, so foxlens did not send the screenshot.';
+
 const where = (privacy) => (privacy.leftDevice ? `sent to ${privacy.provider} (${privacy.model}), not on this device` : `on this device (${privacy.provider}, ${privacy.model})`);
 
 function show(last) {
@@ -49,9 +58,10 @@ async function run(kind, work) {
 
 $("describe").addEventListener("click", () => {
   // permissions.request must run in the click, before any await.
-  const granted = value("describer") === "trialml" ? browser.permissions.request({ permissions: ["trialML"] }) : Promise.resolve(true);
+  const trial = value("describer") === "trialml";
+  const granted = trial ? browser.permissions.request({ permissions: ["trialML"] }).catch(() => false) : consent();
   run("describe", async () => {
-    if (!(await granted)) throw new Error("Firefox's on-device model needs the trial ML permission.");
+    if (!(await granted)) throw new Error(trial ? "Firefox's on-device model needs the trial ML permission." : NO_CONSENT);
     const shot = await capture((await pageTab()).id);
     const options = value("describer") === "trialml" ? { eyes: trialMLEyes() } : { mind: mind(), allowCloud: value("remote") };
     const result = await describe(shot, options);
@@ -59,7 +69,13 @@ $("describe").addEventListener("click", () => {
   });
 });
 
-$("find").addEventListener("click", () => run("find", async () => {
+$("find").addEventListener("click", () => {
+  const granted = consent();
+  run("find", () => find(granted));
+});
+
+async function find(granted) {
+  if (!(await granted)) throw new Error(NO_CONSENT);
   const tabId = (await pageTab()).id;
   const result = await locate(tabId, value("query"), { mind: mind(), allowCloud: value("remote"), ...(value("grid") ? { grid: 8 } : {}) });
   if (!result.found) return { status: `Not found: ${result.reason}`, output: `The model said: ${result.reply}` };
@@ -72,7 +88,7 @@ $("find").addEventListener("click", () => run("find", async () => {
       `Word match: ${Math.round(result.check.match * 100)} %`, e.coveredBy && `Covered by ${e.coveredBy.tag}`, e.frame !== "top" && `In a ${e.frame} frame`]
       .filter(Boolean).join("\n"),
   };
-}));
+}
 
 async function start() {
   const saved = await browser.storage.local.get([...FIELDS, "last"]);

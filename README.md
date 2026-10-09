@@ -67,7 +67,10 @@ In Firefox, open `about:debugging#/runtime/this-firefox`, click **Load
 Temporary Add-on**, and choose `dist-ext/manifest.json`. Click the toolbar
 button. Type a description in **Find** and click **Find**. The panel outlines
 what the model found and shows the element's tag, role, name and text.
-**Describe this tab** writes a description of the page. Keep the popup open
+**Describe this tab** writes a description of the page. For a server that
+is not on this device, check **Send screenshots to this server**. The panel
+then asks Firefox for the `websiteContent` data permission, and sends nothing
+when you say no. Keep the popup open
 while the model works. The panel also opens in the sidebar.
 
 ## Use cases

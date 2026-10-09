@@ -5,3 +5,5 @@ dist/
 dist-ext/
 web-ext-artifacts/
 source.zip
+dist-e2e/
+artifacts/

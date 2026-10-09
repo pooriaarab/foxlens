@@ -6,7 +6,7 @@ foxlens is the fallback "eyes" of a browser agent in Firefox. Some pages do
 not tell the DOM what they show: a button drawn on a `<canvas>`, a button that
 is only an image, a widget in a closed shadow root. foxlens takes a screenshot
 of the tab, asks a vision model where the element is, and maps the answer back
-to a real element in the page. Each result says where the screenshot went.
+to a real element in the page. Each result says where the screenshot went, over every model call it made.
 
 ## Install
 

@@ -1,5 +1,6 @@
 // The E2E harness page. e2e/run.mjs calls window.lens.* here, in the
 // extension, so foxlens runs with the real browser.* APIs.
+import { createMind, openaiCompatible } from "foxmind";
 import * as foxlens from "../../src/index.ts";
 
 const seen = new Map();
@@ -91,6 +92,24 @@ window.lens = {
     try {
       const { useLast, ...rest } = options;
       return await foxlens.locate(await tabFor(url), description, { eyes: eyesFor(fake), ...(useLast ? { capture: lastShot } : {}), ...rest });
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Describe the tab with Firefox's own image-to-text model. */
+  async describeTrial(url) {
+    try {
+      return await foxlens.describe(await foxlens.capture(await tabFor(url)), { eyes: foxlens.trialMLEyes() });
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Describe and locate with a real vision model on an OpenAI-compatible server, through real foxmind. */
+  async real(url, op, baseURL, model, description) {
+    try {
+      const mind = createMind({ providers: [openaiCompatible({ baseURL, model, timeoutMs: 300_000 })] });
+      const tabId = await tabFor(url);
+      return op === "describe" ? await foxlens.describe(await foxlens.capture(tabId), { mind }) : await foxlens.locate(tabId, description, { mind });
     } catch (error) {
       return plain(error);
     }

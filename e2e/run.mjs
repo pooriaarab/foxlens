@@ -2,6 +2,7 @@
 // e2e/harness/), run foxlens in a real Firefox at DPR 1 and DPR 2 against the
 // fixture pages in e2e/site/, and write artifacts/e2e-<date>.json.
 // Usage: pnpm e2e [--headed]. Env: FIREFOX (the Firefox binary).
+import { createServer } from "node:http";
 import { launch, serve, writeArtifact } from "create-foxkit/e2e";
 
 const record = { startedAt: new Date().toISOString(), checks: [], notes: {} };
@@ -11,12 +12,30 @@ const near = (a, b, tolerance = 0.02) => Math.abs(a - b) <= tolerance;
 
 const site = await serve("e2e/site");
 
+// A real local vision model, when Ollama has one. Ollama refuses moz-extension:
+// origins, so a small proxy on 127.0.0.1 forwards /v1 calls without the Origin header.
+const OLLAMA = "http://127.0.0.1:11434";
+const tags = await fetch(`${OLLAMA}/api/tags`).then((r) => r.json()).catch(() => ({ models: [] }));
+const vision = process.env.FOXLENS_VISION_MODEL ?? tags.models?.map((m) => m.name).find((n) => /vl|vision|llava|moondream|minicpm-v|gemma3/i.test(n));
+const proxy = createServer(async (req, res) => {
+  let body = "";
+  for await (const chunk of req) body += chunk;
+  const answer = await fetch(`${OLLAMA}${req.url}`, { method: req.method, headers: { "content-type": "application/json" }, body: req.method === "GET" ? undefined : body });
+  res.writeHead(answer.status, { "content-type": "application/json" }).end(await answer.text());
+});
+await new Promise((done) => proxy.listen(0, "127.0.0.1", done));
+const proxyUrl = `http://127.0.0.1:${proxy.address().port}/v1`;
+
 /** One Firefox at one DPR. `run` gets helpers bound to that Firefox. */
 async function session(dpr, run) {
   const fox = await launch({
     extension: "dist-e2e",
     headless: !process.argv.includes("--headed"),
-    prefs: { "layout.css.devPixelsPerPx": String(dpr), "extensions.background.idle.timeout": 600_000 },
+    // The remote agent turns trial ML and Remote Settings off for automation; a normal profile has both on.
+    prefs: {
+      "layout.css.devPixelsPerPx": String(dpr), "extensions.background.idle.timeout": 600_000,
+      "browser.ml.enable": true, "services.settings.server": "https://firefox.settings.services.mozilla.com/v1",
+    },
   });
   try {
     record.firefox = await fox.browser.version();
@@ -32,7 +51,8 @@ async function session(dpr, run) {
       const tree = await fox.browser.connection.send("browsingContext.getTree", { "moz:scope": "chrome" });
       return fox.browser.connection.send("script.evaluate", { expression, target: { context: tree.result.contexts[0].context }, awaitPromise: true });
     };
-    await run({ fox, open, lens, chrome, at: `DPR ${dpr}` });
+    const canvasPage = () => fox.browser.pages().then((pages) => pages.find((p) => p.url().endsWith("/canvas.html")));
+    await run({ fox, open, lens, chrome, canvasPage, at: `DPR ${dpr}` });
   } finally {
     await fox.close();
   }
@@ -40,7 +60,7 @@ async function session(dpr, run) {
 
 try {
   for (const dpr of [1, 2]) {
-    await session(dpr, async ({ fox, open, lens, chrome, at }) => {
+    await session(dpr, async ({ fox, open, lens, chrome, canvasPage, at }) => {
       // Capture (C1-C3, C6)
       const page = await open("capture.html");
       const view = await lens("captureAt", "capture.html", {}, [[200, 250], [600, 250]]);
@@ -116,6 +136,31 @@ try {
       const follow = await lens("locate", "frames.html", "the teal Follow button", { colour: "0d9488" });
       check(`${at}: closed shadow root is searched (L10)`, ["button", "Follow", "closed"], [follow.element?.tag, follow.element?.name, follow.element?.shadow]);
 
+      if (dpr === 1) {
+        // Describe with Firefox's own image-to-text model (P3), then with a real local model when one runs.
+        await open("canvas.html");
+        check(`${at}: trial.ml before the grant gives code permission (P3)`, "permission", (await lens("describeTrial", "canvas.html")).error?.code);
+        await chrome(`ChromeUtils.importESModule("resource://gre/modules/ExtensionPermissions.sys.mjs").ExtensionPermissions.add("${fox.extensionId}", { permissions: ["trialML"], origins: [] }, WebExtensionPolicy.getByID("${fox.extensionId}").extension)`);
+        const caption = await lens("describeTrial", "canvas.html");
+        record.notes.trialML = caption;
+        check(`${at}: trial.ml image-to-text describes the tab in the browser tier`, [true, "browser", false],
+          [typeof caption.text === "string" && caption.text.length > 0, caption.privacy?.tier, caption.privacy?.leftDevice]);
+        record.notes.realModel = vision ? { model: vision } : { skipped: "No vision model in Ollama. Set FOXLENS_VISION_MODEL or pull one (for example qwen3-vl:2b)." };
+        if (vision) {
+          const started = Date.now();
+          record.notes.realModel.describe = await lens("real", "canvas.html", "describe", proxyUrl, vision);
+          const real = await lens("real", "canvas.html", "locate", proxyUrl, vision, "the blue Subscribe button");
+          record.notes.realModel.locate = { ...real, insideDrawnButton: real.found ? await (await canvasPage()).evaluate((p) => {
+            const r = window.rects.Subscribe;
+            return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
+          }, real.docPoint) : false };
+          await open("buttons.html");
+          const join = await lens("real", "buttons.html", "locate", proxyUrl, vision, "the green Join button");
+          record.notes.realModel.locateImageButton = { found: join.found, reason: join.reason, selector: join.element?.selector, reply: join.reply, modelMs: join.modelMs, error: join.error };
+          record.notes.realModel.totalMs = Date.now() - started;
+        }
+      }
+
       if (dpr === 2) {
         // Last: take the host grant away (C4). permissions.remove needs no click, but
         // a test cannot grant it back, so nothing runs after this.
@@ -130,6 +175,7 @@ try {
   record.error = error instanceof Error ? error.stack : String(error);
 } finally {
   await site.close();
+  proxy.close();
 }
 record.passed = !record.error && record.checks.length > 0 && record.checks.every((c) => c.ok);
 const path = writeArtifact("artifacts", "e2e", record);

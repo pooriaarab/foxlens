@@ -1,6 +1,7 @@
 // The E2E harness page. e2e/run.mjs calls window.lens.* here, in the
 // extension, so foxlens runs with the real browser.* APIs.
 import { createMind, openaiCompatible } from "foxmind";
+import { act, snapshot } from "foxpaw";
 import * as foxlens from "../../src/index.ts";
 
 const seen = new Map();
@@ -61,6 +62,7 @@ const fixedEyes = (text) => ({ name: "fixed", canPoint: true, ask: async () => (
 const eyesFor = (fake) => (fake.colour ? colourEyes(fake.colour) : fixedEyes(fake.reply));
 
 let lastShot;
+let lastFound;
 const jobs = [];
 
 /** Errors cross the WebDriver boundary as plain objects. */
@@ -123,4 +125,40 @@ window.lens = {
     return id;
   },
   done: (id) => jobs[id],
+  /** Locate with a foxpaw snapshot taken first, then click through foxpaw's act. */
+  async pawClick(url, description, fake) {
+    try {
+      const tabId = await tabFor(url);
+      const page = await snapshot(tabId);
+      const found = await foxlens.locate(tabId, description, { eyes: eyesFor(fake), snapshot: page });
+      if (!found.found || !found.control) return { found: found.found, control: false };
+      return { found: true, control: true, acted: await act(tabId, found.control, { op: "click" }, page) };
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  /** Locate (with a foxpaw snapshot, to show there is no control), then click the point. */
+  async locateAndClick(url, description, fake) {
+    try {
+      const tabId = await tabFor(url);
+      lastFound = await foxlens.locate(tabId, description, { eyes: eyesFor(fake), snapshot: await snapshot(tabId) });
+      return { control: !!lastFound.control, clicked: await foxlens.clickAt(tabId, lastFound) };
+    } catch (error) {
+      return plain(error);
+    }
+  },
+  async locateOnly(url, description, fake) {
+    lastFound = await foxlens.locate(await tabFor(url), description, { eyes: eyesFor(fake) });
+    return lastFound.found;
+  },
+  /** Click the last found element again. */
+  async clickLast(url) {
+    return foxlens.clickAt(await tabFor(url), lastFound);
+  },
+  /** Locate, then outline the element on the page. */
+  async outlineFound(url, description, fake) {
+    const tabId = await tabFor(url);
+    const found = await foxlens.locate(tabId, description, { eyes: eyesFor(fake) });
+    return found.found ? foxlens.outline(tabId, found) : found;
+  },
 };

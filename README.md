@@ -59,7 +59,7 @@ button:
 canvas { x: 728, y: 452.5 } local false
 ```
 
-To try it without writing code, build the demo extension and load it:
+To try it without writing code, build the foxlens extension and load it:
 
 ```bash
 pnpm install
@@ -217,7 +217,7 @@ if (hit.found && hit.control) await act(tabId, hit.control, { op: "click" }, pag
 `docs/failure-modes.md` lists each failure mode (C1-C8, M1-M9, L1-L14, A1-A5,
 P1-P5, D1-D4) and its test. The tests went in before the code.
 
-`pnpm e2e` builds the demo extension plus a harness page and runs them in
+`pnpm e2e` builds the extension plus a harness page and runs them in
 Firefox at DPR 1 and DPR 2, with a 1000 x 700 viewport. A fake vision model
 finds a colour in the real screenshot, so a wrong DPR, zoom or scroll mapping
 misses the button. When Ollama has a vision model, the run also uses it
@@ -244,7 +244,7 @@ and one call stopped at the 5-minute timeout. Use an instruct model.
 |---|---|---|
 | `tabs.captureTab(tabId, { rect, scale })` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/captureTab) | Screenshots any tab, or a region of it (Firefox only). Needs host permission. |
 | `tabs.getZoom` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/getZoom) | Divides the page zoom out of the capture scale. |
-| `tabs.query` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/query) | The demo finds the page tab. |
+| `tabs.query` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/query) | The extension finds the page tab. |
 | `scripting.executeScript` (`func`, `args`, `world: "ISOLATED"`) | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/scripting/executeScript) | Runs the bundled page functions: read the view, hit test, click, outline, grid. |
 | `scripting.InjectionTarget.documentIds` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/scripting/InjectionTarget) | Pins the hit test to the captured document (Firefox 153). |
 | `Element.openOrClosedShadowRoot` | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/openOrClosedShadowRoot) | Goes into closed shadow roots from an extension (Firefox only). |
@@ -257,9 +257,9 @@ and one call stopped at the 5-minute timeout. Use an instruct model.
 | `browser.trial.ml` (`createEngine`, `runEngine`) | No MDN page: [Firefox source docs](https://firefox-source-docs.mozilla.org/toolkit/components/ml/extensions.html) | `trialMLEyes` runs the `image-to-text` task on the device. |
 | `permissions.request` / `permissions.contains` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/permissions/request) | Asks for and checks the optional `trialML` permission. |
 | `host_permissions` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/host_permissions) | `captureTab` and `executeScript` need host access to the page. |
-| `storage.local` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/local) | The demo keeps its settings and the last result. |
-| `action` popup and `sidebar_action` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/sidebar_action) | The demo panel opens in both places. |
-| `browser_specific_settings.gecko.data_collection_permissions` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings) | The demo declares `websiteContent` as optional: a screenshot leaves the device only when you choose a remote server. |
+| `storage.local` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage/local) | The extension keeps its settings and the last result. |
+| `action` popup and `sidebar_action` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/sidebar_action) | The panel opens in both places. |
+| `browser_specific_settings.gecko.data_collection_permissions` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings) | The extension declares `websiteContent` as optional: a screenshot leaves the device only when you choose a remote server. |
 | `createImageBitmap`, `OffscreenCanvas` | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas) | The E2E fake model reads pixels of the real screenshot. Not used by the library. |
 
 ## Limits
@@ -284,7 +284,7 @@ and one call stopped at the 5-minute timeout. Use an instruct model.
   input can ignore them.
 - A capture's longer side is at most 2048 image pixels. On a very long page,
   small text becomes too small to read.
-- The demo runs the model in its panel. Keep the popup open, or use the
+- The extension runs the model in its panel. Keep the popup open, or use the
   sidebar, while the model works.
 - E2E tests cover local fixture pages only, not live sites.
 

@@ -4,10 +4,16 @@ import { FoxlensError, fromFirefox } from "./errors.js";
 import { privacyOf, type Eyes, type Privacy } from "./eyes.js";
 import { hitTest, type ElementInfo, type Hit } from "./page.js";
 import { readPoint, toDocument, type Box, type Coordinates, type Point } from "./reply.js";
+import { eyesOf } from "./vision.js";
+import type { Mind } from "foxmind";
 
 export interface LocateOptions {
-  /** The vision model. */
+  /** A foxmind Mind with a vision chat model. */
+  mind?: Mind;
+  /** Any vision model that can point. Used before `mind`. */
   eyes?: Eyes;
+  /** Let a Mind send the screenshot to a cloud provider. Default false. */
+  allowCloud?: boolean;
   /** Use this capture instead of taking a new one. */
   capture?: Capture;
   /** The scale the model gives coordinates in. Default "per1000" (Qwen-VL and many open models). */
@@ -76,8 +82,7 @@ export function pointPrompt(description: string, width: number, height: number, 
 /** Asks a vision model where the element is, maps the point back to the page, and hit-tests it. */
 export async function locate(tabId: number, description: string, options: LocateOptions): Promise<LocateResult> {
   const browser = options.browser ?? api();
-  const eyes = options.eyes;
-  if (!eyes) throw new FoxlensError("unsupported", "locate needs a vision model: pass eyes.");
+  const eyes = eyesOf(options);
   if (!eyes.canPoint) throw new FoxlensError("unsupported", `${eyes.name} gives captions only and cannot point at an element. Use a vision chat model.`);
   const shot = options.capture ?? (await capture(tabId, { browser }));
   const coordinates = options.coordinates ?? "per1000";

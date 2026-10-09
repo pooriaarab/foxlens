@@ -3,7 +3,7 @@
 // fixture pages in e2e/site/, and write artifacts/e2e-<date>.json.
 // Usage: pnpm e2e [--headed]. Env: FIREFOX (the Firefox binary).
 import { createServer, request } from "node:http";
-import { launch, serve, writeArtifact } from "create-foxkit/e2e";
+import { launch, poll, serve, writeArtifact } from "create-foxkit/e2e";
 
 const record = { startedAt: new Date().toISOString(), checks: [], notes: {} };
 const check = (name, expected, actual) =>
@@ -29,6 +29,20 @@ const proxy = createServer((req, res) => {
 });
 await new Promise((done) => proxy.listen(0, "127.0.0.1", done));
 const proxyUrl = `http://127.0.0.1:${proxy.address().port}/v1`;
+
+// A fake OpenAI-compatible vision server for the demo panel. It answers a locate
+// prompt with the box of the drawn Subscribe button at DPR 1 (0-1000 scale), and
+// any other prompt with a fixed description.
+const fakeVision = createServer(async (req, res) => {
+  let body = "";
+  for await (const chunk of req) body += chunk;
+  if (req.url.endsWith("/models")) return void res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ data: [{ id: "fake-vision" }] }));
+  const prompt = JSON.parse(body).messages[0].content[0].text;
+  const content = prompt.startsWith("Find") ? '{"bbox_2d": [620, 600, 840, 691]}' : "A news page with a Cancel button and a blue Subscribe button.";
+  res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }] }));
+});
+await new Promise((done) => fakeVision.listen(0, "127.0.0.1", done));
+const fakeUrl = `http://127.0.0.1:${fakeVision.address().port}/v1`;
 
 /** One Firefox at one DPR. `run` gets helpers bound to that Firefox. */
 async function session(dpr, run) {
@@ -180,6 +194,38 @@ try {
       await lens("setZoom", "buttons.html", 1);
 
       if (dpr === 1) {
+        // The demo panel (D1-D3): Describe and Find on the canvas page, with the fake server.
+        const demoTab = await open("canvas.html");
+        const panel = await fox.openExtensionPage("panel.html");
+        await demoTab.bringToFront();
+        await panel.evaluate((url) => {
+          document.getElementById("server").value = url;
+          document.getElementById("model").value = "fake-vision";
+          document.getElementById("server").dispatchEvent(new Event("change"));
+        }, fakeUrl);
+        const panelText = (id) => panel.evaluate((i) => document.getElementById(i).textContent, id);
+        await panel.evaluate(() => document.getElementById("describe").click());
+        await poll(panel, () => !/working/i.test(document.getElementById("status").textContent) && document.getElementById("status").textContent);
+        check(`${at}: the demo describes the tab and names the tier (D1)`, [true, true],
+          [/Subscribe button/.test(await panelText("output")), /on this device/.test(await panelText("status"))]);
+        await panel.evaluate(() => {
+          document.getElementById("query").value = "the blue Subscribe button";
+          document.getElementById("find").click();
+        });
+        await poll(panel, () => !/working/i.test(document.getElementById("status").textContent) && document.getElementById("status").textContent);
+        const outlined = await demoTab.evaluate(() => {
+          const box = document.getElementById("foxlens-outline")?.getBoundingClientRect();
+          const board = document.getElementById("board").getBoundingClientRect();
+          return !!box && Math.abs(box.top - board.top) < 1.5 && Math.abs(box.width - board.width) < 1.5;
+        });
+        check(`${at}: the demo outlines the found element on the page (D2)`, [true, true], [outlined, /canvas/.test(await panelText("output"))]);
+        await demoTab.screenshot({ path: "artifacts/demo-outline.png" });
+        record.notes.demoLast = await panel.evaluate(() => browser.storage.local.get("last").then((v) => v.last));
+        check(`${at}: the demo keeps the last result for the next time it opens (D3)`, "find", record.notes.demoLast?.kind);
+        await demoTab.close();
+      }
+
+      if (dpr === 1) {
         // Describe with Firefox's own image-to-text model (P3), then with a real local model when one runs.
         await open("canvas.html");
         check(`${at}: trial.ml before the grant gives code permission (P3)`, "permission", (await lens("describeTrial", "canvas.html")).error?.code);
@@ -225,6 +271,7 @@ try {
 } finally {
   await site.close();
   proxy.close();
+  fakeVision.close();
 }
 record.passed = !record.error && record.checks.length > 0 && record.checks.every((c) => c.ok);
 const path = writeArtifact("artifacts", "e2e", record);

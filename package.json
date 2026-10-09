@@ -1,6 +1,6 @@
 {
   "name": "foxlens",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "See a page as an image when the DOM is not enough: screenshot plus a vision model.",
   "type": "module",
   "license": "MIT",

@@ -30,8 +30,10 @@ export function readView(): View {
   if (!lens) {
     const state = { mutations: 0, ids: new WeakMap<Element, number>(), nodes: new Map<number, WeakRef<Element>>(), next: 1 };
     lens = window.foxlensState = state;
+    // Count page changes, not the grid and outline boxes that foxlens adds itself.
+    const ours = (n: Node) => n instanceof Element && n.id.startsWith("foxlens-");
     new MutationObserver((records) => {
-      state.mutations += records.length;
+      state.mutations += records.filter((r) => !(r.type === "childList" && [...r.addedNodes, ...r.removedNodes].every(ours))).length;
     }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
   }
   const root = document.documentElement;

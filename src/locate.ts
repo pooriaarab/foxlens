@@ -1,10 +1,11 @@
 import { api, inPage, type LensBrowser } from "./browser.js";
 import { capture, type Capture } from "./capture.js";
 import { FoxlensError, fromFirefox } from "./errors.js";
-import { privacyOf, type Eyes, type Privacy } from "./eyes.js";
+import { privacyOf, type Eyes, type Privacy, type Seen } from "./eyes.js";
 import { drawOutline, hitTest, type ElementInfo, type Hit } from "./page.js";
 import { readPoint, toDocument, type Box, type Coordinates, type Point } from "./reply.js";
 import { eyesOf } from "./vision.js";
+import { gridLocate } from "./grid.js";
 import type { Mind } from "foxmind";
 
 /** The part of a foxpaw Control that foxlens matches on. */
@@ -24,6 +25,11 @@ export interface LocateOptions<C extends PawControl = PawControl> {
   allowCloud?: boolean;
   /** Use this capture instead of taking a new one. */
   capture?: Capture;
+  /**
+   * Grid mode for weak models: the number of columns of numbered cells drawn over the
+   * page. The model names a cell, then a cell in a finer grid around it (two calls).
+   */
+  grid?: number;
   /** The scale the model gives coordinates in. Default "per1000" (Qwen-VL and many open models). */
   coordinates?: Coordinates;
   browser?: LensBrowser;
@@ -41,6 +47,8 @@ interface Base {
   capture: CaptureFacts;
   /** Time spent in the model call. */
   modelMs: number;
+  /** In grid mode, the cells the model named. */
+  cells?: number[];
 }
 
 export interface Found<C extends PawControl = PawControl> extends Base {
@@ -94,14 +102,30 @@ export async function locate<C extends PawControl = PawControl>(tabId: number, d
   const browser = options.browser ?? api();
   const eyes = eyesOf(options);
   if (!eyes.canPoint) throw new FoxlensError("unsupported", `${eyes.name} gives captions only and cannot point at an element. Use a vision chat model.`);
-  const shot = options.capture ?? (await capture(tabId, { browser }));
-  const coordinates = options.coordinates ?? "per1000";
-  const seen = await eyes.ask(shot.dataUrl, pointPrompt(description, shot.width, shot.height, coordinates), { json: true, signal: options.signal });
-  const { dataUrl: _png, ...facts } = shot;
-  const base: Base = { description, reply: seen.text, privacy: privacyOf(seen), capture: facts, modelMs: seen.ms };
-  const read = readPoint(seen.text, { width: shot.width, height: shot.height, coordinates });
-  if (!read.ok) return { ...base, found: false, reason: read.reason };
-  const docPoint = toDocument(shot, read.point);
+  let shot: Capture;
+  let base: Base;
+  let docPoint: Point;
+  let imageBox: Box | undefined;
+  const pack = (seen: Seen, taken: Capture): Base => {
+    const { dataUrl: _png, ...facts } = taken;
+    return { description, reply: seen.text, privacy: privacyOf(seen), capture: facts, modelMs: seen.ms };
+  };
+  if (options.grid) {
+    const answer = await gridLocate(browser, tabId, eyes, description, options.grid, options.signal);
+    shot = answer.shot;
+    base = { ...pack(answer.seen, shot), cells: answer.cells };
+    if (!answer.read.ok || !answer.docPoint) return { ...base, found: false, reason: answer.read.ok ? "bad_reply" : answer.read.reason };
+    docPoint = answer.docPoint;
+  } else {
+    shot = options.capture ?? (await capture(tabId, { browser }));
+    const coordinates = options.coordinates ?? "per1000";
+    const seen = await eyes.ask(shot.dataUrl, pointPrompt(description, shot.width, shot.height, coordinates), { json: true, signal: options.signal });
+    base = pack(seen, shot);
+    const read = readPoint(seen.text, { width: shot.width, height: shot.height, coordinates });
+    if (!read.ok) return { ...base, found: false, reason: read.reason };
+    docPoint = toDocument(shot, read.point);
+    imageBox = read.box;
+  }
   let hit: Hit;
   try {
     const at = { ...docPoint, w: shot.viewport.width, h: shot.viewport.height, dpr: shot.dpr, sx: shot.scroll.x, sy: shot.scroll.y, mutations: shot.mutations };
@@ -114,7 +138,7 @@ export async function locate<C extends PawControl = PawControl>(tabId: number, d
   if (hit.kind !== "hit") return { ...base, found: false, reason: hit.kind === "offscreen" ? "offscreen" : hit.kind === "nothing" ? "nothing_there" : "stale" };
   const control = hit.foxpawNode === undefined ? undefined : options.snapshot?.controls.find((c) => c.frameId === 0 && c.node === hit.foxpawNode);
   return {
-    ...base, found: true, point: hit.point, docPoint, ...(read.box ? { imageBox: read.box } : {}), element: hit.element,
+    ...base, found: true, point: hit.point, docPoint, ...(imageBox ? { imageBox } : {}), element: hit.element,
     lensNode: hit.lensNode, ...(hit.foxpawNode === undefined ? {} : { foxpawNode: hit.foxpawNode }), ...(control ? { control } : {}),
     check: matchWords(description, hit.element), changed: { scrolled: hit.scrolled, mutations: hit.mutations },
   };

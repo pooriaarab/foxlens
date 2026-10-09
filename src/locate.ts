@@ -162,6 +162,7 @@ export type ClickResult = { ok: true } | { ok: false; reason: "stale" | "covered
  */
 export async function clickAt(tabId: number, found: Found<PawControl>, options: { browser?: LensBrowser } = {}): Promise<ClickResult> {
   const browser = options.browser ?? api();
+  if (!found?.found) throw new FoxlensError("unsupported", "clickAt needs a result with found: true.");
   const shot = found.capture;
   const at = { ...found.docPoint, w: shot.viewport.width, h: shot.viewport.height, dpr: shot.dpr, sx: shot.scroll.x, sy: shot.scroll.y, mutations: 0, click: found.lensNode };
   let hit: Hit;
@@ -183,6 +184,7 @@ export async function clickAt(tabId: number, found: Found<PawControl>, options: 
  */
 export async function outline(tabId: number, found: Found<PawControl>, options: { box?: boolean; colour?: string; ms?: number; browser?: LensBrowser } = {}) {
   const browser = options.browser ?? api();
+  if (!found?.found) throw new FoxlensError("unsupported", "outline needs a result with found: true.");
   const model = options.box && found.docBox;
   const args = { lensNode: model ? 0 : found.lensNode, rect: model || found.element.rect, colour: options.colour ?? "#e11d48", ms: options.ms ?? 0 };
   try {

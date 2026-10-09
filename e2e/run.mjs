@@ -57,6 +57,65 @@ try {
       const long = await lens("captureAt", "long.html", { rect: { x: 0, y: 0, width: 1000, height: 20000 } }, [[500, 10200], [500, 5000]]);
       check(`${at}: a 20000 px page fits in 2048 px (C6)`, [true, true, "blue", "white"], [long.height <= 2048, long.downscaled, ...long.colours]);
 
+      // Locate (L1-L13, M3, M5, A5) with fake models that read only the PNG.
+      const canvas = await open("canvas.html");
+      const inside = (result, name) => canvas.evaluate(([p, n]) => {
+        const r = window.rects[n];
+        return !!p && p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
+      }, [result.docPoint, name]);
+      const blue = { colour: "1d4ed8" };
+      const drawn = await lens("locate", "canvas.html", "the blue Subscribe button", blue);
+      check(`${at}: canvas button maps inside the drawn button (L1, L5)`, [true, "canvas", true], [await inside(drawn, "Subscribe"), drawn.element?.tag, drawn.element?.interactive]);
+      check(`${at}: a found result has the data to check it (A5)`, true, ["tag", "role", "name", "text"].every((k) => typeof drawn.element?.[k] === "string") && typeof drawn.check?.match === "number");
+      check(`${at}: the privacy tier is in the result (P2)`, { tier: "browser", provider: "colour-oracle", leftDevice: false }, drawn.privacy && { tier: drawn.privacy.tier, provider: drawn.privacy.provider, leftDevice: drawn.privacy.leftDevice });
+      await lens("setZoom", "canvas.html", 1.5);
+      const zoomedHit = await lens("locate", "canvas.html", "the blue Subscribe button", blue);
+      check(`${at}: canvas button maps at 150 % zoom (L1)`, true, await inside(zoomedHit, "Subscribe"));
+      await lens("setZoom", "canvas.html", 1);
+      await canvas.evaluate(() => window.scrollTo(0, 200));
+      const scrolledHit = await lens("locate", "canvas.html", "the blue Subscribe button", blue);
+      check(`${at}: canvas button maps on a scrolled page (L1)`, true, await inside(scrolledHit, "Subscribe"));
+      await lens("capture", "canvas.html");
+      await canvas.evaluate(() => window.scrollTo(0, 260));
+      const moved = await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true });
+      check(`${at}: a scroll after the capture is corrected (L2)`, [true, true], [await inside(moved, "Subscribe"), moved.changed?.scrolled]);
+      await lens("capture", "canvas.html");
+      await canvas.evaluate(() => window.scrollTo(0, 1300));
+      check(`${at}: a point scrolled out of view is offscreen (L3)`, "offscreen", (await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true })).reason);
+      await canvas.evaluate(() => window.scrollTo(0, 0));
+      await lens("capture", "canvas.html");
+      await lens("setZoom", "canvas.html", 1.25);
+      check(`${at}: a zoom after the capture is stale (L4)`, "stale", (await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true })).reason);
+      await lens("setZoom", "canvas.html", 1);
+      check(`${at}: a point on the empty page is nothing_there (L11)`, "nothing_there",
+        (await lens("locate", "canvas.html", "the blue Subscribe button", { reply: '{"bbox_2d": [900, 960, 950, 990]}' })).reason);
+      const heading = await lens("locate", "canvas.html", "the blue Subscribe button", { reply: '{"point": [40, 60]}' });
+      check(`${at}: a hallucinated match scores low (L11)`, ["h1", true], [heading.element?.tag, heading.check?.match < 0.34]);
+      check(`${at}: coordinates outside the image are refused (M3)`, "out_of_image", (await lens("locate", "canvas.html", "x", { reply: '{"bbox_2d": [100, 100, 1200, 300]}' })).reason);
+      check(`${at}: a model that finds nothing gives not_found (M5)`, "not_found", (await lens("locate", "canvas.html", "x", { reply: '{"found": false}' })).reason);
+      await lens("capture", "canvas.html");
+      await canvas.evaluate(() => { document.querySelector("h1").textContent = "Daily news, updated"; });
+      const mutated = await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true });
+      check(`${at}: DOM changes after the capture are counted (L13)`, [true, true], [mutated.found, mutated.changed?.mutations > 0]);
+      await lens("capture", "canvas.html");
+      await canvas.reload({ waitUntil: "load" });
+      check(`${at}: a reload after the capture is stale (L12)`, "stale", (await lens("locate", "canvas.html", "the blue Subscribe button", blue, { useLast: true })).reason);
+
+      await open("buttons.html");
+      const join = await lens("locate", "buttons.html", "the green Join button", { colour: "16a34a" });
+      check(`${at}: image-only button resolves to the button (L6)`, ["button", "button", "#subscribe"], [join.element?.tag, join.element?.role, join.element?.selector]);
+      const upgrade = await lens("locate", "buttons.html", "the orange Upgrade button", { colour: "ea580c" });
+      check(`${at}: a pane over the button is named in coveredBy (L7)`, ["#covered", "Upgrade", "div"], [upgrade.element?.selector, upgrade.element?.name, upgrade.element?.coveredBy?.tag]);
+
+      await open("frames.html");
+      await new Promise((done) => setTimeout(done, 500));
+      const pay = await lens("locate", "frames.html", "the purple Pay button", { colour: "7c3aed" });
+      check(`${at}: same-origin frame is searched (L8)`, ["button", "Pay", "same-origin"], [pay.element?.tag, pay.element?.name, pay.element?.frame]);
+      const donate = await lens("locate", "frames.html", "the red Donate button", { colour: "dc2626" });
+      check(`${at}: cross-origin frame is reported, not guessed (L9)`, ["iframe", "cross-origin"], [donate.element?.tag, donate.element?.frame]);
+      const follow = await lens("locate", "frames.html", "the teal Follow button", { colour: "0d9488" });
+      check(`${at}: closed shadow root is searched (L10)`, ["button", "Follow", "closed"], [follow.element?.tag, follow.element?.name, follow.element?.shadow]);
+
       if (dpr === 2) {
         // Last: take the host grant away (C4). permissions.remove needs no click, but
         // a test cannot grant it back, so nothing runs after this.

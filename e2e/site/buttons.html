@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Image buttons fixture</title>
+    <style>
+      body { margin: 0; font: 16px sans-serif; background: #fff; }
+      button { position: absolute; padding: 0; border: 0; background: none; }
+      img { display: block; }
+      #glass { position: absolute; left: 500px; top: 300px; width: 300px; height: 200px; }
+    </style>
+  </head>
+  <body>
+    <h1 style="margin: 20px">Your account</h1>
+    <!-- An image-only button: no text, no alt, no label. -->
+    <button id="subscribe" style="left: 100px; top: 300px" onclick="document.title = 'subscribed'">
+      <img width="160" height="60" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='60'%3E%3Crect width='160' height='60' fill='%2316a34a'/%3E%3Ctext x='30' y='38' font-size='20' fill='white'%3EJoin%3C/text%3E%3C/svg%3E" />
+    </button>
+    <!-- An image button under a transparent pane that takes the clicks. -->
+    <button id="covered" style="left: 560px; top: 360px">
+      <img width="160" height="60" alt="Upgrade" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='60'%3E%3Crect width='160' height='60' fill='%23ea580c'/%3E%3C/svg%3E" />
+    </button>
+    <div id="glass" aria-label="Promo pane"></div>
+  </body>
+</html>

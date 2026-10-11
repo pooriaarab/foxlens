@@ -1,11 +1,92 @@
-body { width: 360px; margin: 12px; font: 14px system-ui, sans-serif; color: #1f2937; }
-h1 { margin: 0 0 4px; font-size: 18px; }
-.hint { margin: 0 0 12px; color: #4b5563; }
-fieldset, section { margin: 0 0 12px; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
-label { display: block; margin: 0 0 6px; }
-input[type="url"], input[type="text"], select { display: block; width: 100%; box-sizing: border-box; margin-top: 2px; padding: 4px; }
-.check { display: flex; gap: 6px; align-items: flex-start; }
-button { padding: 6px 12px; border: 0; border-radius: 4px; background: #1d4ed8; color: #fff; font: inherit; cursor: pointer; }
-#status { min-height: 1.2em; margin: 0 0 6px; font-weight: 600; }
-#output { margin: 0; white-space: pre-wrap; word-break: break-word; background: #f3f4f6; padding: 8px; border-radius: 4px; }
+/* foxlens panel. The base is the fox* UI kit from foxmate: dark first,
+   light by the OS setting, one orange accent for "you, now". */
+:root {
+  color-scheme: dark;
+  --bg: oklch(0.155 0.004 60);
+  --panel: oklch(0.195 0.005 60);
+  --raise: oklch(0.225 0.006 60);
+  --field: oklch(0.175 0.004 60);
+  --code: oklch(0.13 0.004 60);
+  --hover: oklch(1 0 0 / 0.06);
+  --line: oklch(1 0 0 / 0.08);
+  --line-strong: oklch(1 0 0 / 0.14);
+  --text: oklch(0.95 0.006 80);
+  --muted: oklch(0.73 0.01 70);
+  --accent: oklch(0.73 0.165 52);
+  --accent-ink: oklch(0.2 0.03 50);
+  --ask-bg: oklch(0.73 0.165 52 / 0.08);
+  --ask-line: oklch(0.73 0.165 52 / 0.35);
+  --ok: oklch(0.77 0.14 152);
+  --bad: oklch(0.7 0.17 25);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --fast: 160ms;
+  --med: 220ms;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: oklch(0.985 0.003 80);
+    --panel: oklch(1 0 0);
+    --raise: oklch(0.955 0.005 80);
+    --field: oklch(1 0 0);
+    --code: oklch(0.965 0.004 80);
+    --hover: oklch(0 0 0 / 0.05);
+    --line: oklch(0 0 0 / 0.08);
+    --line-strong: oklch(0 0 0 / 0.15);
+    --text: oklch(0.21 0.01 60);
+    --muted: oklch(0.47 0.012 60);
+    --accent: oklch(0.6 0.17 45);
+    --accent-ink: oklch(0.99 0.01 80);
+    --ask-bg: oklch(0.6 0.17 45 / 0.07);
+    --ask-line: oklch(0.6 0.17 45 / 0.35);
+    --ok: oklch(0.52 0.13 152);
+    --bad: oklch(0.53 0.19 25);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p { margin: 0; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted, .hint { color: var(--muted); font-size: 13px; }
+
+button {
+  font: inherit; font-size: 13.5px; font-weight: 550; color: var(--text);
+  background: transparent; border: 1px solid var(--line-strong); border-radius: 10px;
+  height: 34px; padding: 0 14px; cursor: pointer;
+  transition: background-color var(--fast) var(--ease-out), transform 120ms var(--ease-out), opacity var(--fast);
+}
+button:hover { background: var(--hover); }
+button:active:not(:disabled) { transform: scale(0.97); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+button.primary:hover { background: oklch(from var(--accent) calc(l + 0.04) c h); }
+
+input, select, textarea { width: 100%; font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line-strong); border-radius: 10px; padding: 8px 10px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; border-color: transparent; }
+input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex: none; }
+label { display: block; font-size: 13px; font-weight: 550; margin: 14px 0 6px; }
+
+body { width: 360px; padding: 14px 16px 18px; }
+header { display: flex; align-items: center; gap: 8px; }
+.mark { border-radius: 6px; }
+h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.hint { margin: 4px 0 14px; }
+fieldset, section { margin: 0 0 10px; padding: 14px 16px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; min-width: 0; }
+legend { float: left; width: 100%; padding: 0; margin-bottom: 2px; font-size: 13.5px; font-weight: 600; }
+legend + label { clear: both; }
+fieldset label:first-of-type, section label:first-child { margin-top: 0; }
+label input:not([type="checkbox"]), label select { display: block; margin-top: 6px; font-weight: 400; }
+label.check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; font-weight: 400; margin: 12px 0 0; cursor: pointer; }
+label.check input { margin-top: 2px; }
+section button { margin-top: 12px; width: 100%; }
+#status { min-height: 1.5em; margin: 14px 0 8px; font-size: 13px; font-weight: 550; }
+#status:empty { min-height: 0; margin: 0; }
+#output { margin: 0; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; animation: rise var(--med) var(--ease-out); }
 #output:empty { display: none; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

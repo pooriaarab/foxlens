@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "foxlens — see a page with a vision model",
+  "version": "0.1.4",
+  "description": "See a page as an image when the DOM is not enough: screenshot plus a vision model.",
+  "icons": { "48": "icons/icon-48.png", "96": "icons/icon-96.png", "128": "icons/icon-128.png" },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "foxlens@pooriaarab",
+      "strict_min_version": "153.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ],
+        "optional": [
+          "websiteContent"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "scripting",
+    "storage"
+  ],
+  "action": {
+    "default_title": "foxlens",
+    "default_popup": "panel.html",
+    "default_icon": { "48": "icons/icon-48.png", "96": "icons/icon-96.png" }
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "optional_permissions": [
+    "trialML"
+  ],
+  "sidebar_action": {
+    "default_title": "foxlens",
+    "default_panel": "panel.html",
+    "default_icon": { "48": "icons/icon-48.png", "96": "icons/icon-96.png" }
+  }
+}

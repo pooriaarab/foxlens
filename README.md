@@ -1,176 +1,139 @@
 # foxlens
 
-See a page as an image when the DOM is not enough: screenshot plus a vision model.
+[![npm version](https://img.shields.io/npm/v/foxlens)](https://www.npmjs.com/package/foxlens)
+[![Downloads per month](https://img.shields.io/npm/dm/foxlens)](https://www.npmjs.com/package/foxlens)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/license/mit)
 
-foxlens is the fallback "eyes" of a browser agent in Firefox. Some pages do
-not tell the DOM what they show: a button drawn on a `<canvas>`, a button that
-is only an image, a widget in a closed shadow root. foxlens takes a screenshot
-of the tab, asks a vision model where the element is, and maps the answer back
-to a real element in the page. Each result says where the screenshot went, over every model call it made.
+[Package](https://www.npmjs.com/package/foxlens) · [Setup](#locate-your-first-control) · [API](#api) · [Issues](https://github.com/pooriaarab/foxlens/issues)
+
+foxlens is an open-source Firefox screenshot and vision-model library for browser agent developers.
+It locates visual controls when the Document Object Model (DOM) does not describe them well.
+Results map model coordinates to page elements and report the model's privacy tier.
 
 ## Install
 
 ```bash
-npm i foxlens
+npm install foxlens foxmind
 ```
 
-foxlens uses [foxmind](https://github.com/pooriaarab/foxmind) for vision chat
-models. Install it too: `npm i foxmind`.
+foxlens has one direct runtime dependency, foxmind. Package tooling requires Node.js 24 or later.
+Runtime needs Firefox extension APIs; the bundled extension requires Firefox 153 or later.
+The library needs `scripting` permission and host access to the target page.
+It does not load `.env` files. Configure providers in code and export server variables in your shell.
 
-Install the extension from AMO: [addons.mozilla.org/firefox/addon/foxlens](https://addons.mozilla.org/firefox/addon/foxlens/)
-(pending AMO review; the link works after approval).
+## Locate your first control
 
-## Example
-
-This code runs in a Firefox extension page or background script that you
-bundle, for example with esbuild. The extension needs the `scripting`
-permission and host access to the page (`"host_permissions": ["<all_urls>"]`).
-It uses a vision model in Ollama on the same machine:
+Use the bundled extension for a complete setup. Install Git, pnpm 11.10.0, Firefox, and Ollama first.
 
 ```bash
+git clone https://github.com/pooriaarab/foxlens.git
+cd foxlens
+pnpm install --frozen-lockfile
+pnpm build:ext
 ollama pull qwen3-vl:2b-instruct
 OLLAMA_ORIGINS="moz-extension://*" ollama serve
 ```
 
-Ollama refuses extension origins without `OLLAMA_ORIGINS`.
+Start Ollama with that origin setting after stopping any existing server.
+No API key is needed for this local model. See [Ollama origin configuration](https://docs.ollama.com/faq).
+Load `dist-ext/manifest.json` through Firefox's `about:debugging#/runtime/this-firefox` page.
+Open a normal web page with a visible button. Open the foxlens sidebar and describe that button in the Find field.
+Use server `http://127.0.0.1:11434/v1` and model `qwen3-vl:2b-instruct`, then click Find.
+A successful result outlines the target and shows `Found` with its tag and word-match score.
+Model answers can fail; a `Not found` result includes the failure reason. Keep the panel open while it works.
+
+For your own bundled extension, the minimal library call is:
 
 ```js
 import { createMind, ollama } from "foxmind";
 import { locate, outline } from "foxlens";
 
-// only: ["browser", "local"] means no cloud provider can get the screenshot.
-const mind = createMind({ only: ["browser", "local"], providers: [ollama({ model: "qwen3-vl:2b-instruct" })] });
+const mind = createMind({
+  only: ["browser", "local"],
+  providers: [ollama({ model: "qwen3-vl:2b-instruct" })],
+});
 const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-
 const hit = await locate(tab.id, "the blue Subscribe button", { mind });
 if (hit.found) {
   await outline(tab.id, hit, { box: hit.element.tag === "canvas" });
-  console.log(hit.element.tag, hit.docPoint, hit.privacy.tier, hit.privacy.leftDevice);
+  console.log(hit.element.tag, hit.docPoint, hit.privacy);
 } else {
-  console.log("not found:", hit.reason);
+  console.log("not found", hit.reason);
 }
 ```
 
-On the canvas fixture page (`e2e/site/canvas.html`), our E2E run with
-`qwen3-vl:2b-instruct` gave this result. The point is inside the drawn
-button:
-
-```text
-canvas { x: 728, y: 452.5 } local false
-```
-
-To try it without writing code, build the foxlens extension and load it:
-
-```bash
-pnpm install
-pnpm build:ext
-```
-
-In Firefox, open `about:debugging#/runtime/this-firefox`, click **Load
-Temporary Add-on**, and choose `dist-ext/manifest.json`. Click the toolbar
-button. Type a description in **Find** and click **Find**. The panel outlines
-what the model found and shows the element's tag, role, name and text.
-**Describe this tab** writes a description of the page. For a server that
-is not on this device, check **Send screenshots to this server**. The panel
-then asks Firefox for the `websiteContent` data permission, and sends nothing
-when you say no. Keep the popup open
-while the model works. The panel also opens in the sidebar.
-
-## Use cases
-
-| Who | What they build | How foxlens helps |
-|---|---|---|
-| Agent builders | An agent that works in canvas apps: whiteboards, maps, games, design tools | `locate` finds a drawn control that has no DOM node, and `clickAt` clicks that point. |
-| Accessibility tool makers | A tool that tells a screen reader user what an image-only page shows | `describe` writes a description of the tab with a local model or Firefox's own image-to-text model, so the page does not leave the computer. |
-| QA testers | Visual checks in real Firefox: "is the Subscribe button on screen and not covered?" | `locate` returns the element under the point, a `coveredBy` element when something lies over it, and a word-match score. |
-| Content editors and CMS plugin authors | An alt-text helper that suggests text for images that have none | `describe` on a captured region (`capture(tabId, { rect })`) gives a first draft that a person checks. |
-| foxpaw users | A fallback for controls foxpaw cannot name, such as an icon button with no label | Pass a foxpaw snapshot to `locate`. You get foxpaw's own `control` back, so foxpaw's `act` keeps its stale check. |
-| Benchmark and research teams | A test of how well vision models find UI elements | The E2E fixtures in `e2e/site` and the fake colour model in `e2e/harness` give a known right answer at DPR 1 and 2, with zoom and scroll. |
+Bundle this code in an extension page with `scripting` and the target origin in `host_permissions`.
 
 ## How it works
 
-```mermaid
-flowchart LR
-  cap["capture: tabs.captureTab<br/>+ scroll, viewport, DPR, documentId"] --> model["vision model:<br/>foxmind Mind or trial.ml"]
-  model --> read["readPoint: box or point<br/>(0-1000 scale or pixels)"]
-  read -->|outside the image| no["found: false<br/>out_of_image"]
-  read --> map["map to CSS pixels:<br/>÷ measured px per CSS px<br/>+ captured rect origin"]
-  map --> hit["hitTest in the captured document:<br/>elementFromPoint through shadow roots<br/>and same-origin frames"]
-  hit --> result["element: tag, role, name, text,<br/>coveredBy, word match, privacy"]
-  result --> paw["foxpaw act(control)"]
-  result --> click["clickAt (canvas)"]
-  result --> box["outline"]
+```text
+Firefox capture + page geometry -> screenshot -> vision model -> point or box
+point -> measured image/CSS ratio -> document point -> hit test -> element + privacy
+optional foxpaw snapshot -> matching control -> foxpaw act
 ```
 
-1. `capture` reads `scrollX`, `scrollY`, the viewport size and
-   `devicePixelRatio` in the page, then calls `tabs.captureTab` for that rect.
-   It measures image pixels per CSS pixel from the PNG header. It does not
-   trust `devicePixelRatio` or the `scale` option, because Firefox multiplies
-   the scale by the page zoom. The longer image side is at most 2048 pixels.
-2. `locate` asks the model for a box. The prompt names the image size and the
-   scale (0 to 1000 by default, as Qwen-VL models answer). `readPoint` reads
-   the reply in the shapes models use, and refuses values outside the image.
-   It does not clamp them.
-3. The point becomes document CSS pixels. When the page scrolled after the
-   capture, foxlens first looks at the viewport point the model saw. A fixed
-   element there is still there, so foxlens keeps that point
-   (`anchor: "viewport"`). Otherwise it subtracts the current scroll from the
-   document point. When a fixed or sticky layer now lies on that point, or
-   the element the model saw was sticky, the result is `stale`. A change of
-   viewport size, zoom or DPR also gives `stale`.
-4. A bundled page function hit-tests the point. It goes into closed shadow
-   roots with Firefox's `openOrClosedShadowRoot` and into same-origin frames.
-   It walks up to the nearest control and names any element that covers it.
-   The call targets the captured `documentId`, so Firefox refuses it after a
-   navigation or reload.
+Capture measures image pixels per Cascading Style Sheets (CSS) pixel from the PNG header.
+Hit tests use the captured document identifier when Firefox supplies it.
+They traverse closed shadow roots and same-origin frames, with checks for changed viewport geometry.
+Grid mode makes up to two model calls: a coarse grid, then a finer 6-by-6 grid.
 
-In grid mode (`grid: 8`), foxlens draws numbered cells over the page and asks
-for a cell number. Then it draws 6 x 6 cells over the area around that cell
-and asks again. The point comes from the cell geometry in CSS pixels.
+## Why it exists
 
-```mermaid
-sequenceDiagram
-  participant C as Your code
-  participant L as foxlens
-  participant F as Firefox (tabs, scripting)
-  participant P as Page (isolated world)
-  participant M as Vision model
-  C->>L: locate(tabId, "the blue Subscribe button", { mind })
-  L->>F: executeScript(readView)
-  F->>P: scroll, viewport, DPR
-  P-->>L: page facts + documentId
-  L->>F: captureTab(tabId, { rect, scale })
-  F-->>L: PNG
-  L->>M: prompt + screenshot
-  M-->>L: {"bbox_2d": [620, 528, 836, 622]}
-  L->>F: executeScript(hitTest, documentIds)
-  F->>P: elementFromPoint, shadow roots, frames
-  P-->>L: element, coveredBy, foxpaw node
-  L-->>C: found, element, check, privacy
-```
+DOM locators work well for named controls. Canvas controls and image-only targets can require a screenshot model.
+foxlens adds image capture, coordinate mapping, hit testing, and privacy reporting inside Firefox extensions.
+[Playwright locators](https://playwright.dev/docs/locators) provide attribute-based browser test targeting.
 
-foxlens sends no code strings to the page. Every page function is bundled
-with the extension and gets its data as JSON arguments.
+## Compare
 
-### Privacy
+Checked 2026-10-14 against source and [Playwright's locator documentation](https://playwright.dev/docs/locators).
 
-The screenshot goes only to the model you pass. Every result has
-`privacy: { tier, provider, model, leftDevice }`. `leftDevice` is true only
-for the `cloud` tier. When a foxmind `Mind` has a chat provider on the cloud
-tier, `describe` and `locate` throw `cloud_not_allowed` before any call. Pass
-`allowCloud: true` to allow it. For a local-only Mind, use foxmind's
-`only: ["browser", "local"]`.
+| Property | foxlens | Playwright locators |
+|---|---|---|
+| Target selection | Vision-model point or box | Role, text, label, test identifier, and selectors |
+| Execution | Firefox extension | Browser automation process |
+| Configuration | Vision model and capture options | Locator expressions |
+| Model requirement | Required for visual locate | None for DOM locators |
 
-Ollama models whose name ends in `-cloud` (for example
-`qwen3-vl:235b-cloud`) run on ollama.com, even though the server is on
-localhost and foxmind calls it `local`. foxlens treats them as the cloud
-tier: it refuses them without `allowCloud`, and reports `leftDevice: true`.
+## Coverage
 
-`allowCloud` guards a foxmind Mind only. When you pass your own `eyes`,
-foxlens cannot check where they send the image before the call. It reports
-the tier your eyes give.
+| Integration or path | Status | Boundary |
+|---|---|---|
+| foxmind `mindEyes` | Implemented adapter | Sends OpenAI-format `image_url` content parts |
+| Ollama / Qwen-VL | Via foxmind | Requires an image-capable model and extension origins |
+| llama.cpp llama-server | Via foxmind | Requires an image-capable OpenAI-compatible endpoint |
+| LM Studio | Via foxmind | Requires an image-capable OpenAI-compatible endpoint |
+| OpenAI-compatible cloud endpoints | Fake-server tested | Explicit `allowCloud: true`; real credentials unverified here |
+| Firefox trial.ml / Mozilla distilvit | Implemented; captions only | Cannot locate elements |
+| foxpaw | Implemented bridge | Matches snapshot controls in the same extension's top frame |
+| Anthropic through foxmind `anthropic()` | Unsupported image conversion | Does not translate these image parts |
 
-## API
+foxlens defines two built-in vision adapters: `mindEyes` and `trialMLEyes`.
+Provider rows share the foxmind adapter; they are not separate foxlens adapters.
+Custom `Eyes` implementations can supply another model. Their reported privacy tier is trusted.
+Local checks cover fake providers and browser stand-ins. No new real-model or live-cloud verification is claimed here.
+
+## Common use cases
+
+1. Firefox agent developers: locate canvas controls with Ollama and Qwen-VL.
+2. Extension authors: add screenshot descriptions with Firefox trial.ml or a foxmind vision model.
+3. Firefox test authors: inspect coordinates across page scroll, zoom, and device pixel ratios.
+4. foxpaw users: use visual location as a fallback, then pass matching controls to `act`.
+5. Model researchers: compare point answers with the repository's Firefox fixtures.
+
+## Features
+
+- **Capture:** records PNG geometry, scroll position, document identity, and mutation counts.
+- **Locate:** parses points and boxes, then hit-tests the corresponding page position.
+- **Describe:** captions captures through foxmind or Firefox trial.ml.
+- **Actions:** outlines targets and dispatches synthetic pointer and mouse events.
+- **Privacy:** reports the most remote tier used across model calls.
+
+## Runtime surfaces
+
+foxlens is an ECMAScript module library for Firefox extension pages and background scripts.
+It has no CLI or Model Context Protocol (MCP) server and exports no MCP tools.
+
+### API
 
 foxlens is a library. It has no CLI and no MCP server.
 
@@ -211,34 +174,25 @@ const hit = await locate(tabId, "the icon button that starts the export", { mind
 if (hit.found && hit.control) await act(tabId, hit.control, { op: "click" }, page);
 ```
 
-## Tests
+### Privacy
 
-`pnpm ci:local` runs lint, typecheck, 30 isolated tests and the build.
-`docs/failure-modes.md` lists each failure mode (C1-C8, M1-M9, L1-L14, A1-A5,
-P1-P5, D1-D4) and its test. The tests went in before the code.
+The screenshot goes only to the model you pass. Every result has
+`privacy: { tier, provider, model, leftDevice }`. `leftDevice` is true only
+for the `cloud` tier. When a foxmind `Mind` has a chat provider on the cloud
+tier, `describe` and `locate` throw `cloud_not_allowed` before any call. Pass
+`allowCloud: true` to allow it. For a local-only Mind, use foxmind's
+`only: ["browser", "local"]`.
 
-`pnpm e2e` builds the extension plus a harness page and runs them in
-Firefox at DPR 1 and DPR 2, with a 1000 x 700 viewport. A fake vision model
-finds a colour in the real screenshot, so a wrong DPR, zoom or scroll mapping
-misses the button. When Ollama has a vision model, the run also uses it
-through foxmind. Results of our run on 2026-10-09 (Firefox 157.0.1, Apple M3
-Pro, headless; all 66 checks passed):
+Ollama models whose name ends in `-cloud` or `:cloud` (for example
+`qwen3-vl:235b-cloud`) run on ollama.com, even though the server is on
+localhost and foxmind calls it `local`. foxlens treats them as the cloud
+tier: it refuses them without `allowCloud`, and reports `leftDevice: true`.
 
-| Check | Result |
-|---|---|
-| Fake model: canvas button at DPR 1 and 2, 150 % zoom, scrolled, scroll after capture | inside the drawn button each time |
-| Fake model: image-only button, covered button, same-origin frame, closed shadow root | the right element each time |
-| `qwen3-vl:2b-instruct` (Ollama): locate the canvas Subscribe button | inside the drawn button, 16 s |
-| `qwen3-vl:2b-instruct`: locate the image-only Join button | the right `<button>`, 21 s |
-| `qwen3-vl:2b-instruct`: describe the canvas page | named both buttons, missed the "Daily news" heading, 43 s |
-| `qwen3-vl:2b-instruct` in grid mode | answered `{"found": false}` |
-| trial.ml `Mozilla/distilvit` caption of the canvas page | "Slices of a blue sign with an arrow." (wrong), 27 s with download |
+`allowCloud` guards a foxmind Mind only. When you pass your own `eyes`,
+foxlens cannot check where they send the image before the call. It reports
+the tier your eyes give.
 
-In earlier runs, the thinking model `qwen3-vl:2b` took 1 to 4 minutes per
-answer. One description came back empty after it used its whole token budget,
-and one call stopped at the 5-minute timeout. Use an instruct model.
-
-## Firefox APIs used
+### Firefox APIs used
 
 | API | MDN | Why |
 |---|---|---|
@@ -262,9 +216,9 @@ and one call stopped at the 5-minute timeout. Use an instruct model.
 | `browser_specific_settings.gecko.data_collection_permissions` | [MDN](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings) | The extension declares `websiteContent` as optional: a screenshot leaves the device only when you choose a remote server. |
 | `createImageBitmap`, `OffscreenCanvas` | [MDN](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas) | The E2E fake model reads pixels of the real screenshot. Not used by the library. |
 
-## Limits
+## Delivery and behavior limits
 
-- We tested cloud models only against fake servers. We used no real API key.
+- Cloud tests use fake servers. This rewrite does not verify real cloud credentials.
 - foxmind's `anthropic()` provider does not turn OpenAI image parts into
   Anthropic image blocks, so it cannot take the screenshot. For a cloud model, use `openaiCompatible()` with a server that
   takes OpenAI image parts (for example OpenAI or OpenRouter).
@@ -282,30 +236,83 @@ and one call stopped at the 5-minute timeout. Use an instruct model.
   reads foxpaw's page cache, so both must run in the same extension.
 - `clickAt` events have `isTrusted: false`. A page that checks for trusted
   input can ignore them.
-- A capture's longer side is at most 2048 image pixels. On a very long page,
-  small text becomes too small to read.
+- Captures default to a 2048-pixel maximum side. `maxSide` can change it. Downscaling can make small text unreadable.
 - The extension runs the model in its panel. Keep the popup open, or use the
   sidebar, while the model works.
 - E2E tests cover local fixture pages only, not live sites.
 
-## Part of the fox primitives
+## Integration guides
 
-```mermaid
-flowchart LR
-  foxkit[foxkit] -- template --> foxlens[foxlens]
-  foxmind[foxmind] -- vision models --> foxlens
-  foxlens -. found control .-> foxpaw[foxpaw]
-  foxlens -. planned .-> foxmate[foxmate]
-  click foxkit "https://github.com/pooriaarab/foxkit"
-  click foxmind "https://github.com/pooriaarab/foxmind"
-  click foxlens "https://github.com/pooriaarab/foxlens"
-  click foxpaw "https://github.com/pooriaarab/foxpaw"
-  click foxmate "https://github.com/pooriaarab/foxmate"
+- [Ollama and Firefox setup](#locate-your-first-control): extension origin access and local vision calls.
+- [foxpaw control handoff](#with-foxpaw): snapshot matching and action calls.
+- [Screenshot privacy](#privacy): cloud opt-in and custom adapter boundaries.
+- [Firefox permission reference](#firefox-apis-used): capture, scripting, and optional trial ML.
+
+## Status
+
+Version 0.1.3 is an early release. APIs can change before 1.0.
+Use [GitHub issues](https://github.com/pooriaarab/foxlens/issues) for support.
+Public case studies are not yet published in this repository.
+Use the local build for the demo extension; this README does not promise AMO availability.
+
+## FAQ
+
+### What is foxlens?
+
+foxlens locates visual controls in Firefox screenshots and maps model answers back to page elements.
+It also describes screenshots and reports model privacy metadata.
+
+### Which integrations are verified?
+
+foxlens has two built-in adapters, plus a foxpaw control bridge.
+This rewrite verifies code paths and local checks; real cloud credentials remain unverified.
+
+### Does foxlens provide a managed vision service?
+
+foxlens calls the model you configure.
+You run the local server or supply a provider account.
+
+### How is foxlens different from Playwright locators?
+
+foxlens asks a vision model for a point or box inside a screenshot.
+Playwright locators select page elements through attributes, text, and selectors.
+
+### Can Firefox trial.ml locate buttons?
+
+foxlens uses trial.ml for captions only.
+`locate` rejects this adapter because it cannot return target points.
+
+### Do screenshots leave my device?
+
+foxlens reports `privacy.leftDevice` for cloud-tier calls.
+Use local-only foxmind providers; custom `eyes` must report their tier accurately.
+
+### Is allowCloud a consent system for custom models?
+
+foxlens checks `allowCloud` for foxmind providers before a call.
+Custom `eyes` run their own code, so you must enforce consent and destination policy there.
+
+### Does clickAt send trusted browser input?
+
+foxlens dispatches synthetic pointer and mouse events.
+Pages can ignore them because `isTrusted` is false.
+
+### Does foxlens detect every visual change?
+
+foxlens checks selected geometry and document conditions and counts DOM mutations.
+Canvas redraws can change pixels without changing that count.
+
+## Development
+
+```bash
+pnpm install --frozen-lockfile
+pnpm ci:local
+pnpm e2e
 ```
 
-foxlens depends on foxmind. foxpaw does not depend on foxlens: you call
-foxlens, and pass its `control` to foxpaw's `act`.
+The local gate runs library checks, extension build, web-ext lint, and AMO listing validation.
+Browser tests require Firefox and use fixture pages. Ollama checks also require a running vision model.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://opensource.org/license/mit)

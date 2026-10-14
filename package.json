@@ -1,6 +1,6 @@
 {
   "name": "foxlens",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Firefox screenshot and vision-model library for AI agents, with visual element location, Ollama via foxmind, and foxpaw control mapping.",
   "type": "module",
   "license": "MIT",
